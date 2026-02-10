@@ -1,0 +1,56 @@
+/* FICHIER : color.ts
+ * Palette de couleurs centralisée pour l'application React Native.
+ * PRINCIPE : Toutes les couleurs utilisées dans l'application sont définies ici.*/
+export default {
+  atb: {
+    primary: '#8B1538',
+    primaryDark: '#6B0F2A',
+    primaryLight: '#A01A42',
+    burgundy: '#8B1538',
+    burgundyDark: '#6B0F2A',
+    red: '#AC0033',
+    burgundyLight: '#A01A42',
+    accent: '#C5A572',
+    accentLight: '#D4B887',
+    accentDark: '#B08D5A',
+    gold: '#cfb894', 
+    orange: '#F97316',
+    
+  },
+  neutral: {
+    white: '#FFFFFF',
+    offWhite: '#FAF9F7',
+    cream: '#F5F3F0',
+    beige: '#eae7e2',
+    gray50: '#F8F8F8',
+    gray100: '#F0F0F0',
+    gray200: '#E0E0E0',
+    gray300: '#CCCCCC',
+    gray400: '#999999',
+    gray500: '#6B6B6B',
+    gray600: '#4A4A4A',
+    gray700: '#2E2E2E',
+    gray800: '#1A1A1A',
+    gray900: '#0F0F0F',
+    black: '#000000',
+  },
+  status: {
+    success: '#047857',
+    successLight: '#D1FAE5',
+    warning: '#D97706',
+    warningLight: '#FEF3C7',
+    error: '#DC2626',
+    errorLight: '#FEE2E2',
+    info: '#0284C7',
+    infoLight: '#E0F2FE',
+    errorDark: '#B91C1C',
+  },
+  light: {
+    text: '#1A1A1A',
+    background: '#FAF9F7',
+    tint: '#8B1538',
+    tabIconDefault: '#999999',
+    tabIconSelected: '#8B1538',
+     background2: '#dcdcdc',
+  },
+};
