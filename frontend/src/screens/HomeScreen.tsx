@@ -476,7 +476,7 @@ const HomeScreen = () => {
           <View style={styles.storeButtons}>
             <TouchableOpacity 
               style={styles.storeButton}
-              onPress={() => Linking.openURL('https://www.apple.com/fr/app-store/')} 
+              onPress={() => Linking.openURL('https://apps.apple.com/fr/app/connect/id6756798670')} 
             >
               <FontAwesome name="apple" size={20} color={colors.neutral.white} />
               <View style={styles.storeButtonTextContainer}>
@@ -486,7 +486,7 @@ const HomeScreen = () => {
             </TouchableOpacity>
             <TouchableOpacity 
               style={styles.storeButton}
-              onPress={() => Linking.openURL('https://play.google.com/store/apps?hl=fr.')} 
+              onPress={() => Linking.openURL('https://play.google.com/store/apps/details?id=com.atb.atbconnect')} 
             >
               <FontAwesome5 name="google-play" size={18} color={colors.neutral.white} />
               <View style={styles.storeButtonTextContainer}>

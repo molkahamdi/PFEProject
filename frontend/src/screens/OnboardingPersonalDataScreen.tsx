@@ -10,12 +10,13 @@ import {
   StyleSheet,
   Image,
   StatusBar,
+  Modal,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import StepIndicator from '../components/common/StepIndicator';
 import CustomDropdown from '../components/common/CustomDropdown';
-import DateInput from '../components/common/DateInput';
 import colors from 'constants/colors';
 import CustomInput from '@/components/common/CustomInput';
 
@@ -35,16 +36,23 @@ const OnboardingPersonalDataScreen: React.FC<OnboardingPersonalDataScreenProps> 
     lastNameArabic: '',
     firstNameArabic: '',
     gender: '',
-    nationality: 'Tunisienne',
+    nationality: 'Tunisie',
     birthDate: '',
     birthPlace: 'Tunis',
-    countryOfBirth: 'Tunisia',
-    countryOfResidence: 'Tunisia',
+    countryOfBirth: 'Tunisie',
+    countryOfResidence: 'Tunisie',
     phoneNumber: '',
     email: '',
     idCardNumber: '',
     idIssueDate: '',
   });
+
+  // État pour le modal de calendrier
+  const [datePickerVisible, setDatePickerVisible] = useState(false);
+  const [currentDateField, setCurrentDateField] = useState<'birthDate' | 'idIssueDate' | null>(null);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [selectedDay, setSelectedDay] = useState(new Date().getDate());
 
   const genderOptions = [
     { label: 'Madame', value: 'F' },
@@ -52,34 +60,290 @@ const OnboardingPersonalDataScreen: React.FC<OnboardingPersonalDataScreenProps> 
   ];
 
   const countries = [
-    { label: 'Tunisie', value: 'Tunisia' },
+    { label: 'Tunisie', value: 'Tunisie' },
     { label: 'France', value: 'France' },
-    { label: 'Allemagne', value: 'Germany' },
-    { label: 'Espagne', value: 'Spain' },
-    { label: 'Italie', value: 'Italy' },
+    { label: 'Allemagne', value: 'Allemagne' },
+    { label: 'Espagne', value: 'Espagne' },
+    { label: 'Italie', value: 'Italie' },
   ];
 
   const cities = [
     { label: 'Tunis', value: 'Tunis' },
     { label: 'Sfax', value: 'Sfax' },
     { label: 'Sousse', value: 'Sousse' },
-    { label: 'Gabès', value: 'Gabes' },
+    { label: 'Gabès', value: 'Gabès' },
     { label: 'Bizerte', value: 'Bizerte' },
+    { label: 'Nabeul', value: 'Nabeul' },
+    { label: 'Kairouan', value: 'Kairouan' },
+    { label: 'Monastir', value: 'Monastir' },
+    { label: 'Gafsa', value: 'Gafsa' },
+    { label: 'Médenine', value: 'Médenine' },
   ];
 
   const updateField = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleContinue = () => {
-    // Navigation directe vers OTP Verification Screen
-    navigation.navigate('OtpVerification');
+  // Fonction de validation simple
+  const validateForm = (): boolean => {
+    const requiredFields = [
+      formData.lastName,
+      formData.firstName,
+      formData.lastNameArabic,
+      formData.firstNameArabic,
+      formData.gender,
+      formData.nationality,
+      formData.birthDate,
+      formData.birthPlace,
+      formData.countryOfBirth,
+      formData.countryOfResidence,
+      formData.phoneNumber,
+      formData.email,
+      formData.idCardNumber,
+      formData.idIssueDate,
+    ];
+
+    if (requiredFields.some(field => !field || field.trim() === '')) {
+      Alert.alert(
+        'Champs obligatoires',
+        'Veuillez remplir tous les champs obligatoires',
+        [{ text: 'OK', style: 'default' }]
+      );
+      return false;
+    }
+
+    return true;
   };
+
+  const handleContinue = () => {
+    if (validateForm()) {
+      navigation.navigate('OtpVerification');
+    }
+  };
+
+  // Formater la date au format JJ/MM/AAAA
+  const formatDate = (date: Date): string => {
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
+  // Ouvrir le sélecteur de date
+  const openDatePicker = (field: 'birthDate' | 'idIssueDate') => {
+    setCurrentDateField(field);
+    
+    if (formData[field]) {
+      const [day, month, year] = formData[field].split('/');
+      const parsedDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+      if (!isNaN(parsedDate.getTime())) {
+        setSelectedYear(parseInt(year));
+        setSelectedMonth(parseInt(month) - 1);
+        setSelectedDay(parseInt(day));
+      } else {
+        const today = new Date();
+        setSelectedYear(today.getFullYear());
+        setSelectedMonth(today.getMonth());
+        setSelectedDay(today.getDate());
+      }
+    } else {
+      const today = new Date();
+      setSelectedYear(today.getFullYear());
+      setSelectedMonth(today.getMonth());
+      setSelectedDay(today.getDate());
+    }
+    
+    setDatePickerVisible(true);
+  };
+
+  // Appliquer la date sélectionnée
+  const applyDate = () => {
+    if (currentDateField) {
+      const date = new Date(selectedYear, selectedMonth, selectedDay);
+      updateField(currentDateField, formatDate(date));
+    }
+    setDatePickerVisible(false);
+    setCurrentDateField(null);
+  };
+
+  // Annuler la sélection
+  const cancelDatePicker = () => {
+    setDatePickerVisible(false);
+    setCurrentDateField(null);
+  };
+
+  // Obtenir le mois en français
+  const getFrenchMonth = (monthIndex: number): string => {
+    const months = [
+      'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+      'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
+    ];
+    return months[monthIndex];
+  };
+
+  // Changer le mois
+  const changeMonth = (direction: 'prev' | 'next') => {
+    if (direction === 'prev') {
+      if (selectedMonth === 0) {
+        setSelectedMonth(11);
+        setSelectedYear(selectedYear - 1);
+      } else {
+        setSelectedMonth(selectedMonth - 1);
+      }
+    } else {
+      if (selectedMonth === 11) {
+        setSelectedMonth(0);
+        setSelectedYear(selectedYear + 1);
+      } else {
+        setSelectedMonth(selectedMonth + 1);
+      }
+    }
+  };
+
+  // Générer les jours du mois
+  const generateCalendarDays = () => {
+    const firstDay = new Date(selectedYear, selectedMonth, 1).getDay();
+    const adjustedFirstDay = firstDay === 0 ? 6 : firstDay - 1;
+    
+    const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+    
+    const days = [];
+    
+    const prevMonthDays = new Date(selectedYear, selectedMonth, 0).getDate();
+    for (let i = 0; i < adjustedFirstDay; i++) {
+      days.push({
+        day: prevMonthDays - adjustedFirstDay + i + 1,
+        isCurrentMonth: false,
+        date: new Date(selectedYear, selectedMonth - 1, prevMonthDays - adjustedFirstDay + i + 1)
+      });
+    }
+    
+    for (let i = 1; i <= daysInMonth; i++) {
+      days.push({
+        day: i,
+        isCurrentMonth: true,
+        date: new Date(selectedYear, selectedMonth, i)
+      });
+    }
+    
+    const remainingDays = 42 - days.length;
+    for (let i = 1; i <= remainingDays; i++) {
+      days.push({
+        day: i,
+        isCurrentMonth: false,
+        date: new Date(selectedYear, selectedMonth + 1, i)
+      });
+    }
+    
+    return days;
+  };
+
+  const calendarDays = generateCalendarDays();
+  const weekDays = ['Lu', 'Ma', 'Me', 'Je', 'Ve', 'Sa', 'Di'];
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-       <StatusBar barStyle="dark-content" backgroundColor={colors.neutral.gray100} />
-      {/* Header identique au EligibilityScreen */}
+      <StatusBar barStyle="dark-content" backgroundColor={colors.neutral.gray100} />
+      
+      {/* Modal du calendrier */}
+      <Modal
+        visible={datePickerVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={cancelDatePicker}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.calendarHeader}>
+              <TouchableOpacity 
+                style={styles.monthNavButton}
+                onPress={() => changeMonth('prev')}
+              >
+                <Text style={styles.monthNavText}>←</Text>
+              </TouchableOpacity>
+              <Text style={styles.monthYearText}>
+                {getFrenchMonth(selectedMonth)} {selectedYear}
+              </Text>
+              <TouchableOpacity 
+                style={styles.monthNavButton}
+                onPress={() => changeMonth('next')}
+              >
+                <Text style={styles.monthNavText}>→</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.weekDaysContainer}>
+              {weekDays.map((day, index) => (
+                <Text key={index} style={styles.weekDayText}>{day}</Text>
+              ))}
+            </View>
+
+            <View style={styles.calendarGrid}>
+              {calendarDays.map((day, index) => {
+                const isSelected = 
+                  day.isCurrentMonth && 
+                  day.day === selectedDay && 
+                  day.date.getMonth() === selectedMonth &&
+                  day.date.getFullYear() === selectedYear;
+                
+                const isToday = 
+                  day.date.toDateString() === new Date().toDateString();
+
+                return (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.calendarDay,
+                      !day.isCurrentMonth && styles.calendarDayOtherMonth,
+                      isSelected && styles.calendarDaySelected,
+                      isToday && styles.calendarDayToday,
+                    ]}
+                    onPress={() => {
+                      if (day.isCurrentMonth) {
+                        setSelectedDay(day.day);
+                      }
+                    }}
+                  >
+                    <Text style={[
+                      styles.calendarDayText,
+                      !day.isCurrentMonth && styles.calendarDayTextOtherMonth,
+                      isSelected && styles.calendarDayTextSelected,
+                      isToday && !isSelected && styles.calendarDayTextToday,
+                    ]}>
+                      {day.day}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            
+            <View style={styles.calendarActions}>
+              <TouchableOpacity
+                style={styles.calendarCancelButton}
+                onPress={cancelDatePicker}
+              >
+                <Text style={styles.calendarCancelText}>Annuler</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={styles.calendarApplyButton}
+                onPress={applyDate}
+              >
+                <LinearGradient
+                  colors={[colors.atb.red, colors.atb.red]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.calendarApplyGradient}
+                >
+                  <Text style={styles.calendarApplyText}>Appliquer</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <View style={styles.logoContainer}>
@@ -100,7 +364,6 @@ const OnboardingPersonalDataScreen: React.FC<OnboardingPersonalDataScreenProps> 
           </View>
         </View>
         
-        {/* Badge DIGIPACK */}
         <LinearGradient
           colors={[colors.atb.red, colors.atb.red]}
           start={{ x: 0, y: 0 }}
@@ -170,11 +433,11 @@ const OnboardingPersonalDataScreen: React.FC<OnboardingPersonalDataScreenProps> 
               </View>
 
               <View style={styles.formSection}>
-                {/* Nom - Horizontal */}
+                {/* Nom */}
                 <View style={styles.fieldContainer}>
                   <View style={styles.horizontalLabelRow}>
                     <Text style={styles.fieldLabelLeft}>Nom *</Text>
-                    <Text style={styles.fieldLabelRight}>اللقب  *</Text>
+                    <Text style={styles.fieldLabelRight}>اللقب *</Text>
                   </View>
                   <View style={styles.inputContainer}>
                     <TextInput
@@ -188,7 +451,7 @@ const OnboardingPersonalDataScreen: React.FC<OnboardingPersonalDataScreenProps> 
                   </View>
                 </View>
 
-                {/* Prénom - Horizontal */}
+                {/* Prénom */}
                 <View style={styles.fieldContainer}>
                   <View style={styles.horizontalLabelRow}>
                     <Text style={styles.fieldLabelLeft}>Prénom *</Text>
@@ -206,6 +469,7 @@ const OnboardingPersonalDataScreen: React.FC<OnboardingPersonalDataScreenProps> 
                   </View>
                 </View>
                 
+                {/* Noms en arabe */}
                 <View style={styles.row}>
                   <View style={styles.halfWidth}>
                     <CustomInput
@@ -227,7 +491,7 @@ const OnboardingPersonalDataScreen: React.FC<OnboardingPersonalDataScreenProps> 
                   </View>
                 </View>
 
-                {/* Civilité - Horizontal */}
+                {/* Civilité */}
                 <View style={styles.fieldContainer}>
                   <View style={styles.horizontalLabelRow}>
                     <Text style={styles.fieldLabelLeft}>Civilité *</Text>
@@ -256,7 +520,7 @@ const OnboardingPersonalDataScreen: React.FC<OnboardingPersonalDataScreenProps> 
                   </View>
                 </View>
 
-                {/* Nationalité - Horizontal */}
+                {/* Nationalité */}
                 <View style={styles.fieldContainer}>
                   <View style={styles.horizontalLabelRow}>
                     <Text style={styles.fieldLabelLeft}>Nationalité *</Text>
@@ -271,76 +535,79 @@ const OnboardingPersonalDataScreen: React.FC<OnboardingPersonalDataScreenProps> 
                   />
                 </View>
 
-                {/* Date de naissance - Vertical (un des 4 champs spéciaux) */}
-                <View style={styles.row}>
-                  <View style={styles.halfWidth}>
-                    <View style={styles.fieldContainer}>
-                      <View style={styles.verticalLabelContainer}>
-                        <Text style={styles.fieldLabel}>Date de naissance *</Text>
-                        <Text style={styles.arabicLabel}>تاريخ الميلاد *</Text>
-                      </View>
-                      <DateInput
-                        label=""
-                        placeholder="JJ/MM/AAAA"
-                        value={formData.birthDate}
-                        onChangeText={(text) => updateField('birthDate', text)}
-                        required={false}
-                      />
-                    </View>
+                {/* DATE DE NAISSANCE - SEUL (champ indépendant) */}
+                <View style={styles.fieldContainer}>
+                  <View style={styles.horizontalLabelRow}>
+                    <Text style={styles.fieldLabelLeft}>Date de naissance *</Text>
+                    <Text style={styles.fieldLabelRight}>تاريخ الميلاد *</Text>
                   </View>
-                  
-                  {/* Lieu de naissance - Vertical (un des 4 champs spéciaux) */}
-                  <View style={styles.halfWidth}>
-                    <View style={styles.fieldContainer}>
-                      <View style={styles.verticalLabelContainer}>
-                        <Text style={styles.fieldLabel}>Lieu de naissance *</Text>
-                        <Text style={styles.arabicLabel}>مكان الميلاد *</Text>
-                      </View>
-                      <CustomDropdown
-                        label=""
-                        value={formData.birthPlace}
-                        options={cities}
-                        onSelect={(value) => updateField('birthPlace', value)}
-                        required={false}
-                      />
+                  <TouchableOpacity 
+                    style={styles.dateInputTouchable}
+                    onPress={() => openDatePicker('birthDate')}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.dateInputContainer}>
+                      <Text style={[
+                        styles.dateInputText,
+                        !formData.birthDate && styles.dateInputPlaceholder
+                      ]}>
+                        {formData.birthDate || 'JJ/MM/AAAA'}
+                      </Text>
+                      <LinearGradient
+                        colors={[colors.atb.red, colors.atb.red]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={styles.calendarIconContainer}
+                      >
+                        <Text style={styles.calendarIcon}>📅</Text>
+                      </LinearGradient>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 </View>
 
-                {/* Pays de naissance - Vertical (un des 4 champs spéciaux) */}
-                <View style={styles.row}>
-                  <View style={styles.halfWidth}>
-                    <View style={styles.fieldContainer}>
-                      <View style={styles.verticalLabelContainer}>
-                        <Text style={styles.fieldLabel}>Pays de naissance *</Text>
-                        <Text style={styles.arabicLabel}>بلد الميلاد *</Text>
-                      </View>
-                      <CustomDropdown
-                        label=""
-                        value={formData.countryOfBirth}
-                        options={countries}
-                        onSelect={(value) => updateField('countryOfBirth', value)}
-                        required={false}
-                      />
-                    </View>
+                {/* Lieu de naissance */}
+                <View style={styles.fieldContainer}>
+                  <View style={styles.horizontalLabelRow}>
+                    <Text style={styles.fieldLabelLeft}>Lieu de naissance *</Text>
+                    <Text style={styles.fieldLabelRight}>مكان الميلاد *</Text>
                   </View>
-                  
-                  {/* Pays de résidence - Vertical (un des 4 champs spéciaux) */}
-                  <View style={styles.halfWidth}>
-                    <View style={styles.fieldContainer}>
-                      <View style={styles.verticalLabelContainer}>
-                        <Text style={styles.fieldLabel}>Pays de résidence *</Text>
-                        <Text style={styles.arabicLabel}>بلد الإقامة *</Text>
-                      </View>
-                      <CustomDropdown
-                        label=""
-                        value={formData.countryOfResidence}
-                        options={countries}
-                        onSelect={(value) => updateField('countryOfResidence', value)}
-                        required={false}
-                      />
-                    </View>
+                  <CustomDropdown
+                    label=""
+                    value={formData.birthPlace}
+                    options={cities}
+                    onSelect={(value) => updateField('birthPlace', value)}
+                    required={false}
+                  />
+                </View>
+
+                {/* Pays de naissance */}
+                <View style={styles.fieldContainer}>
+                  <View style={styles.horizontalLabelRow}>
+                    <Text style={styles.fieldLabelLeft}>Pays de naissance *</Text>
+                    <Text style={styles.fieldLabelRight}>بلد الميلاد *</Text>
                   </View>
+                  <CustomDropdown
+                    label=""
+                    value={formData.countryOfBirth}
+                    options={countries}
+                    onSelect={(value) => updateField('countryOfBirth', value)}
+                    required={false}
+                  />
+                </View>
+
+                {/* Pays de résidence */}
+                <View style={styles.fieldContainer}>
+                  <View style={styles.horizontalLabelRow}>
+                    <Text style={styles.fieldLabelLeft}>Pays de résidence *</Text>
+                    <Text style={styles.fieldLabelRight}>بلد الإقامة *</Text>
+                  </View>
+                  <CustomDropdown
+                    label=""
+                    value={formData.countryOfResidence}
+                    options={countries}
+                    onSelect={(value) => updateField('countryOfResidence', value)}
+                    required={false}
+                  />
                 </View>
               </View>
             </View>
@@ -359,14 +626,14 @@ const OnboardingPersonalDataScreen: React.FC<OnboardingPersonalDataScreenProps> 
               </View>
 
               <View style={styles.formSection}>
-                {/* Téléphone - Horizontal */}
+                {/* Téléphone */}
                 <View style={styles.fieldContainer}>
                   <View style={styles.horizontalLabelRow}>
                     <Text style={styles.fieldLabelLeft}>Numéro de téléphone *</Text>
                     <Text style={styles.fieldLabelRight}>رقم الهاتف *</Text>
                   </View>
                   <Text style={styles.fieldHint}>
-                    Requis pour l&apos;ouverture de compte / مطلوب لفتح الحساب
+                    Requis pour l'ouverture de compte / مطلوب لفتح الحساب
                   </Text>
                   
                   <View style={styles.phoneRow}>
@@ -382,12 +649,13 @@ const OnboardingPersonalDataScreen: React.FC<OnboardingPersonalDataScreenProps> 
                         value={formData.phoneNumber}
                         onChangeText={(text) => updateField('phoneNumber', text)}
                         selectionColor={colors.atb.primary}
+                        maxLength={8}
                       />
                     </View>
                   </View>
                 </View>
 
-                {/* Email - Horizontal */}
+                {/* Email */}
                 <View style={styles.fieldContainer}>
                   <View style={styles.horizontalLabelRow}>
                     <Text style={styles.fieldLabelLeft}>Adresse email *</Text>
@@ -423,14 +691,14 @@ const OnboardingPersonalDataScreen: React.FC<OnboardingPersonalDataScreenProps> 
                 >
                   <Text style={styles.sectionNumberText}>3</Text>
                 </LinearGradient>
-                <Text style={styles.sectionTitle}>Pièce d&apos;identité</Text>
+                <Text style={styles.sectionTitle}>Pièce d'identité</Text>
               </View>
 
               <View style={styles.formSection}>
-                {/* Numéro CIN - Horizontal */}
+                {/* Numéro CIN */}
                 <View style={styles.fieldContainer}>
                   <View style={styles.horizontalLabelRow}>
-                    <Text style={styles.fieldLabelLeft}>Numéro de la carte d&apos;identité *</Text>
+                    <Text style={styles.fieldLabelLeft}>Numéro de la carte d'identité *</Text>
                     <Text style={styles.fieldLabelRight}>رقم بطاقة الهوية *</Text>
                   </View>
                   <View style={styles.inputContainer}>
@@ -442,23 +710,39 @@ const OnboardingPersonalDataScreen: React.FC<OnboardingPersonalDataScreenProps> 
                       onChangeText={(text) => updateField('idCardNumber', text)}
                       keyboardType="number-pad"
                       selectionColor={colors.atb.primary}
+                      maxLength={8}
                     />
                   </View>
                 </View>
 
-                {/* Date d'émission - Horizontal */}
+                {/* Date d'émission */}
                 <View style={styles.fieldContainer}>
                   <View style={styles.horizontalLabelRow}>
-                    <Text style={styles.fieldLabelLeft}>Date d&apos;émission *</Text>
+                    <Text style={styles.fieldLabelLeft}>Date d'émission *</Text>
                     <Text style={styles.fieldLabelRight}>تاريخ الإصدار *</Text>
                   </View>
-                  <DateInput
-                    label=""
-                    placeholder="JJ/MM/AAAA"
-                    value={formData.idIssueDate}
-                    onChangeText={(text) => updateField('idIssueDate', text)}
-                    required={false}
-                  />
+                  <TouchableOpacity 
+                    style={styles.dateInputTouchable}
+                    onPress={() => openDatePicker('idIssueDate')}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.dateInputContainer}>
+                      <Text style={[
+                        styles.dateInputText,
+                        !formData.idIssueDate && styles.dateInputPlaceholder
+                      ]}>
+                        {formData.idIssueDate || 'JJ/MM/AAAA'}
+                      </Text>
+                      <LinearGradient
+                        colors={[colors.atb.red, colors.atb.red]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={styles.calendarIconContainer}
+                      >
+                        <Text style={styles.calendarIcon}>📅</Text>
+                      </LinearGradient>
+                    </View>
+                  </TouchableOpacity>
                 </View>
               </View>
 
@@ -469,7 +753,7 @@ const OnboardingPersonalDataScreen: React.FC<OnboardingPersonalDataScreenProps> 
                   end={{ x: 1, y: 0 }}
                   style={styles.securityIconWrapper}
                 >
-                  {/* Contenu vide - juste le gradient */}
+                  <Text style={styles.securityIcon}>🔒</Text>
                 </LinearGradient>
                 <Text style={styles.securityText}>
                   <Text style={styles.confidentialText}>Confidentialité</Text> : Vos données personnelles sont protégées et cryptées selon les normes
@@ -586,8 +870,6 @@ const styles = StyleSheet.create({
     color: colors.neutral.white,
     letterSpacing: 2,
   },
-  
-  // Le reste des styles reste inchangé
   scrollContent: {
     flexGrow: 1,
   },
@@ -690,14 +972,13 @@ const styles = StyleSheet.create({
     gap: 0,
   },
   fieldContainer: {
-    marginBottom: 20,
+    marginBottom: 18,
   },
-  // Styles pour labels horizontaux (pour la plupart des champs)
   horizontalLabelRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 5,
   },
   fieldLabelLeft: {
     fontSize: 12,
@@ -715,9 +996,8 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
   },
-  // Styles pour labels verticaux (pour les 4 champs spécifiques)
   verticalLabelContainer: {
-    marginBottom: 8,
+    marginBottom: 6,
   },
   fieldLabel: {
     fontSize: 12,
@@ -791,9 +1071,13 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     gap: 12,
+    marginBottom: 0,
   },
   halfWidth: {
     flex: 1,
+  },
+  dropdownWrapper: {
+    width: '100%',
   },
   phoneRow: {
     flexDirection: 'row',
@@ -845,6 +1129,179 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     padding: 0,
   },
+  // Styles pour le sélecteur de date
+  dateInputTouchable: {
+    width: '100%',
+  },
+  dateInputContainer: {
+    height: 50,
+    backgroundColor: colors.neutral.white,
+    borderWidth: 1.5,
+    borderColor: colors.neutral.gray300,
+    borderRadius: 6,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  dateInputText: {
+    fontSize: 14,
+    color: colors.neutral.gray900,
+    fontWeight: '600',
+    flex: 1,
+  },
+  dateInputPlaceholder: {
+    color: colors.neutral.gray400,
+    fontWeight: '400',
+  },
+  calendarIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calendarIcon: {
+    fontSize: 18,
+    color: colors.neutral.white,
+  },
+  // Styles pour le modal de calendrier
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: colors.neutral.white,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: colors.neutral.gray900,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 8,
+    padding: 20,
+  },
+  calendarHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingHorizontal: 10,
+  },
+  monthNavButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.neutral.gray100,
+  },
+  monthNavText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.atb.red,
+  },
+  monthYearText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.neutral.gray900,
+  },
+  weekDaysContainer: {
+    flexDirection: 'row',
+    marginBottom: 10,
+    paddingHorizontal: 5,
+  },
+  weekDayText: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.neutral.gray600,
+    paddingVertical: 8,
+  },
+  calendarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 20,
+  },
+  calendarDay: {
+    width: '14.28%',
+    aspectRatio: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+  },
+  calendarDayOtherMonth: {
+    opacity: 0.3,
+  },
+  calendarDaySelected: {
+    backgroundColor: colors.atb.red,
+  },
+  calendarDayToday: {
+    borderWidth: 1,
+    borderColor: colors.atb.red,
+  },
+  calendarDayText: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: colors.neutral.gray900,
+  },
+  calendarDayTextOtherMonth: {
+    color: colors.neutral.gray500,
+  },
+  calendarDayTextSelected: {
+    color: colors.neutral.white,
+    fontWeight: '700',
+  },
+  calendarDayTextToday: {
+    color: colors.atb.red,
+    fontWeight: '700',
+  },
+  calendarActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 10,
+  },
+  calendarCancelButton: {
+    flex: 1,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.neutral.white,
+    borderWidth: 1,
+    borderColor: colors.neutral.gray300,
+    borderRadius: 8,
+  },
+  calendarCancelText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.neutral.gray700,
+  },
+  calendarApplyButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  calendarApplyGradient: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calendarApplyText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.neutral.white,
+  },
   securityNotice: {
     padding: 16,
     backgroundColor: colors.neutral.offWhite,
@@ -861,6 +1318,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 12,
     alignSelf: 'flex-start',
+  },
+  securityIcon: {
+    fontSize: 16,
+    color: colors.neutral.white,
   },
   securityText: {
     fontSize: 11,

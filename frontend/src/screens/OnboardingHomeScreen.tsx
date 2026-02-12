@@ -370,7 +370,7 @@ const OnboardingHomeScreen = () => {
                   style={styles.ctaElegantButtonGradient}
                 >
                   <MaterialIcons name="account-circle" size={20} color={colors.neutral.white} />
-                  <Text style={styles.ctaElegantButtonText}>Pour plus d'informations!</Text>
+                  <Text style={styles.ctaElegantButtonText}>Commencer maintenant!</Text>
                   <Entypo name="chevron-right" size={20} color={colors.neutral.white} />
                 </LinearGradient>
               </TouchableOpacity>
@@ -406,7 +406,7 @@ const OnboardingHomeScreen = () => {
           <View style={styles.storeButtons}>
             <TouchableOpacity 
               style={styles.storeButton}
-              onPress={() => Linking.openURL('https://www.apple.com/fr/app-store/')} 
+              onPress={() => Linking.openURL('https://apps.apple.com/fr/app/connect/id6756798670')} 
             >
               <FontAwesome name="apple" size={20} color={colors.neutral.white} />
               <View style={styles.storeButtonTextContainer}>
@@ -416,7 +416,7 @@ const OnboardingHomeScreen = () => {
             </TouchableOpacity>
             <TouchableOpacity 
               style={styles.storeButton}
-              onPress={() => Linking.openURL('https://play.google.com/store/apps?hl=fr.')} 
+              onPress={() => Linking.openURL('https://play.google.com/store/apps/details?id=com.atb.atbconnect')} 
             >
               <FontAwesome5 name="google-play" size={18} color={colors.neutral.white} />
               <View style={styles.storeButtonTextContainer}>

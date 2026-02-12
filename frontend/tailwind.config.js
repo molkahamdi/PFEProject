@@ -1,3 +1,5 @@
+
+//c'est un fichier inutile pour le projet 
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: [

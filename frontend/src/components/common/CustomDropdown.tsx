@@ -21,7 +21,6 @@ interface CustomDropdownProps {
   onSelect: (value: string) => void;
   error?: string;
   required?: boolean;
- placeholder?: string;
 }
 
 const CustomDropdown: React.FC<CustomDropdownProps> = ({
