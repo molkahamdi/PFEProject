@@ -17,10 +17,11 @@ interface DropdownOption {
 interface CustomDropdownProps {
   label: string;
   value: string;
-  options: DropdownOption[];
+  options: readonly { label: string; value: string }[];
   onSelect: (value: string) => void;
   error?: string;
   required?: boolean;
+  placeholder?: string;
 }
 
 const CustomDropdown: React.FC<CustomDropdownProps> = ({

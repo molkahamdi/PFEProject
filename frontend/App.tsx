@@ -18,6 +18,7 @@ import IdentityVerificationScreen from '@/screens/IdentityVerificationScreen';
 import ResumeWithReferenceScreen from '@/screens/ResumeWithReferenceScreen';
 import ForgetPasswordScreen from '@/screens/ForgotPasswordScreen';
 import NewPasswordScreen from '@/screens/NewPasswordScreen';
+import RecapitulatifScreen from '@/screens/RecapitulatifScreen';
 const Stack = createNativeStackNavigator<RootStackParamList>();
 export default function App() {
   return (
@@ -85,7 +86,12 @@ export default function App() {
       <Stack.Screen
         name="NewPassword"
         component={NewPasswordScreen}/>
+        <Stack.Screen 
+          name="Recapitulatif" 
+          component={RecapitulatifScreen}
+        />
       </Stack.Navigator>
+       
     </NavigationContainer>
   );
 }
