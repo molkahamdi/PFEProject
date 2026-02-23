@@ -6,10 +6,10 @@ export type RootStackParamList = {
   Home: undefined;
   EligibilityConditions: undefined;
   OnboardingHome: undefined;
-  OnboardingPersonalData: { customerId?: string; isEHouwiya?: boolean; data?: any } | undefined;
+  OnboardingPersonalData: { customerId?: string; isEHouwiya?: boolean; data?: any ;fromRecap?: boolean; } | undefined;
   OtpVerification: { customerId: string };
-  FATCA: { customerId: string };
-  DocumentsJustificatif: { customerId: string };
+  FATCA: { customerId: string ;fromRecap?: boolean;};
+  DocumentsJustificatif: { customerId: string ;fromRecap?: boolean;};
   Personaldataform: { customerId: string };
   Recapitulatif: { customerId: string };
   DigigoScreen: { customerId: string };

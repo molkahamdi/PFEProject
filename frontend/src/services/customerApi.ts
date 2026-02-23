@@ -227,4 +227,14 @@ export async function findCustomerByEmail(
     'GET',
   );
   return response.success ? response.data : null;
+
+
+}
+// Ajoutez ceci à la fin de customerApi.ts
+export async function updateCustomer(
+  customerId: string,
+  data: Partial<Record<string, any>>,  // Partial pour permettre des mises à jour partielles
+): Promise<{ id: string; currentStep: number; status: string }> {
+  const response = await apiCall<CustomerCreatedResponse>(`/customer/${customerId}`, 'PATCH', data);
+  return response.data;
 }
