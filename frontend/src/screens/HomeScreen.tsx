@@ -219,19 +219,26 @@ const HomeScreen = () => {
               </Text>
 
               <View style={styles.buttonContainer}>
-                <TouchableOpacity 
-                  style={styles.primaryButton}
-                  activeOpacity={0.9}
-                >
-                  <LinearGradient
-                    colors={[colors.atb.accent, colors.atb.gold]}
-                    style={styles.primaryButtonGradient}
-                  >
-                    <MaterialCommunityIcons name="shield-account" size={20} color={colors.neutral.white} />
-                    <Text style={styles.primaryButtonText}>Commencer avec E-Houwiya</Text>
-                    <AntDesign name="arrow-right" size={16} color={colors.neutral.white} />
-                  </LinearGradient>
-                </TouchableOpacity>
+                // Dans HomeScreen.tsx - Remplacer le onPress existant
+
+{/* BOUTON E-HOUWIYA */}
+<TouchableOpacity 
+  style={styles.primaryButton}
+  activeOpacity={0.9}
+  onPress={() => {
+    // @ts-ignore
+    navigation.navigate('EHouwiyaWebView');
+  }}
+>
+  <LinearGradient
+    colors={[colors.atb.accent, colors.atb.gold]}
+    style={styles.primaryButtonGradient}
+  >
+    <MaterialCommunityIcons name="shield-account" size={20} color={colors.neutral.white} />
+    <Text style={styles.primaryButtonText}>Commencer avec E-Houwiya</Text>
+    <AntDesign name="arrow-right" size={16} color={colors.neutral.white} />
+  </LinearGradient>
+</TouchableOpacity>
 
                 <TouchableOpacity 
                   style={styles.secondaryButton}

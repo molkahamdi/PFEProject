@@ -171,12 +171,10 @@ export async function saveDocuments(
   );
   return response.data;
 }
-
 // ══════════════════════════════════════════════════════════════
 //  FORMULAIRE PERSO — Sauvegarder adresse + pro + agence
 //  Appelé par PersonalDataForm → handleContinue
 // ══════════════════════════════════════════════════════════════
-
 export async function savePersonalForm(
   customerId: string,
   data: {
@@ -204,7 +202,6 @@ export async function savePersonalForm(
   }>(`/customer/${customerId}/personal-form`, 'POST', data);
   return response.data;
 }
-
 // ══════════════════════════════════════════════════════════════
 //  LECTURE — Récupérer un customer complet
 //  Appelé par RecapitulatifScreen au chargement
@@ -227,9 +224,8 @@ export async function findCustomerByEmail(
     'GET',
   );
   return response.success ? response.data : null;
-
-
 }
+
 // Ajoutez ceci à la fin de customerApi.ts
 export async function updateCustomer(
   customerId: string,

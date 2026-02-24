@@ -90,7 +90,10 @@ export default function App() {
           name="Recapitulatif" 
           component={RecapitulatifScreen}
         />
+        
+       
       </Stack.Navigator>
+      
        
     </NavigationContainer>
   );
