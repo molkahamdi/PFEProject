@@ -269,7 +269,7 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   titleSection: {
-    marginBottom: 32,
+    marginBottom: 15,
   },
   titleHeader: {
     marginBottom: 2,
@@ -306,7 +306,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 20,
-    paddingBottom: 16,
+    paddingBottom: 13,
     borderBottomWidth: 1,
     borderBottomColor: colors.neutral.beige,
   },
@@ -330,7 +330,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.1,
   },
   reservedNotice: {
-    marginBottom: 24,
+    marginBottom: 20,
   },
   reservedText: {
     fontSize: 14,
@@ -338,7 +338,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   conditionsList: {
-    marginBottom: 24,
+    marginBottom: 10,
   },
   conditionItem: {
     marginBottom: 12,
@@ -453,7 +453,7 @@ const styles = StyleSheet.create({
   },
   footer: {
     alignItems: 'center',
-    paddingTop: 20,
+    paddingTop: 16,
     paddingBottom: 8,
   },
   footerDivider: {

@@ -1,35 +1,113 @@
 // ============================================================
-//  frontend/screens/DocumentsJustificatifsScreen.tsx — FINALE
-//  ✅ Création normale | ✅ Modification fromRecap (pré-rempli)
-//  ✅ Style original conservé (modal choix, upload box, etc.)
+//  frontend/screens/DocumentsJustificatifsScreen.tsx
+//  ✅ Affichage OCR épuré — ZERO score/pourcentage côté utilisateur
+//  ✅ Logique 3 tentatives max par document avec blocage
+//  ✅ Alerte "dossier signalé" à la dernière tentative ratée
+//  ✅ Logs détaillés conservés en console dev uniquement
+//  ✅ UploadBox désactivée si document bloqué
 // ============================================================
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, KeyboardAvoidingView,
-  Platform, StyleSheet, Alert, Image, StatusBar, Modal, ActivityIndicator,
+  Platform, StyleSheet, Alert, Image, StatusBar, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AntDesign, Feather, MaterialIcons, Ionicons } from '@expo/vector-icons';
-import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import colors from '../../constants/colors';
 import { NavigationProp, RouteProp } from '../types/navigation';
-import { saveDocuments, updateCustomer, getCustomer } from '../services/customerApi';
+import { saveDocuments } from '../services/customerApi';
+import { useOcrScan, OcrDocKey } from '../hooks/useOcrScan';
+import { OcrResultBadge } from '../components/common/OcrResultBadge';
+import { DocumentScanGuide } from '../components/common/DocumentScanGuide';
+import type { DocType as OcrDocType, OcrScanResult } from '../services/ocrApi';
 
-// ── Types ────────────────────────────────────────────────────
 type Props = {
   navigation: NavigationProp<'DocumentsJustificatif'>;
   route: RouteProp<'DocumentsJustificatif'>;
 };
 
 interface UploadedDocument {
-  name: string; size: number; type: string; uri?: string;
+  name: string;
+  size: number;
+  type: string;
+  uri: string | null;
 }
 
 type UploadType = 'cinRecto' | 'cinVerso' | 'passport';
 
-// ── Sous-composants ──────────────────────────────────────────
+const DOC_ASPECT: Record<UploadType, [number, number]> = {
+  cinRecto: [85.6, 54],
+  cinVerso: [85.6, 54],
+  passport: [125,  88],
+};
+
+const UPLOAD_TO_OCR: Record<UploadType, OcrDocType> = {
+  cinRecto: 'CIN_RECTO',
+  cinVerso: 'CIN_VERSO',
+  passport: 'PASSPORT',
+};
+
+// ── Compression ───────────────────────────────────────────────
+const compressImage = async (uri: string): Promise<{
+  uri: string; width: number; height: number; fileSize: number;
+} | null> => {
+  try {
+    const result = await ImageManipulator.manipulateAsync(
+      uri,
+      [{ resize: { width: 1200 } }],
+      { compress: 0.82, format: ImageManipulator.SaveFormat.JPEG }
+    );
+    const estimatedSize = Math.round((result.width * result.height * 0.25) / 8);
+    return { uri: result.uri, width: result.width, height: result.height, fileSize: estimatedSize };
+  } catch (err) {
+    console.error('[compressImage] Erreur:', err);
+    return null;
+  }
+};
+
+// ── PhaseIndicator ────────────────────────────────────────────
+const PhaseIndicator: React.FC<{ currentPhase: number }> = ({ currentPhase }) => {
+  const phases = [
+    { id: 1, label: 'Données personnelles' },
+    { id: 2, label: 'Documents justificatifs' },
+    { id: 3, label: 'Résumer de la demande' },
+    { id: 4, label: 'Envoi de la demande' },
+    { id: 5, label: 'Signature éléctronique' },
+  ];
+  return (
+    <View style={styles.phaseContainer}>
+      {phases.map((phase, index) => (
+        <React.Fragment key={phase.id}>
+          <View style={styles.phaseItem}>
+            <View style={[
+              styles.phaseRadioOuter,
+              phase.id < currentPhase && styles.phaseRadioCompleted,
+              phase.id === currentPhase && styles.phaseRadioActive,
+            ]}>
+              {phase.id < currentPhase
+                ? <Text style={styles.phaseRadioCheck}>✓</Text>
+                : <View style={[styles.phaseRadioInner, phase.id === currentPhase && styles.phaseRadioInnerActive]} />
+              }
+            </View>
+            <Text style={[
+              styles.phaseLabel,
+              phase.id === currentPhase && styles.phaseLabelActive,
+              phase.id < currentPhase && styles.phaseLabelCompleted,
+            ]}>
+              {phase.label}
+            </Text>
+          </View>
+          {index < phases.length - 1 && <View style={styles.phaseConnector} />}
+        </React.Fragment>
+      ))}
+    </View>
+  );
+};
+
+// ── Header ────────────────────────────────────────────────────
 const Header: React.FC = () => (
   <View style={styles.header}>
     <View style={styles.headerLeft}>
@@ -49,6 +127,7 @@ const Header: React.FC = () => (
   </View>
 );
 
+// ── Footer ────────────────────────────────────────────────────
 const Footer: React.FC = () => (
   <View style={styles.footer}>
     <View style={styles.footerLegal}>
@@ -61,15 +140,24 @@ const Footer: React.FC = () => (
   </View>
 );
 
+// ── UploadBox ─────────────────────────────────────────────────
 const UploadBox: React.FC<{
-  type: UploadType; label: string; document: UploadedDocument | null;
-  borderColor: string; onUpload: (type: UploadType) => void; onRemove: (type: UploadType) => void;
-}> = ({ type, label, document, borderColor, onUpload, onRemove }) => {
-  const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  };
+  type: UploadType;
+  label: string;
+  document: UploadedDocument | null;
+  borderColor: string;
+  disabled?: boolean;
+  onCamera: (type: UploadType) => void;
+  onGallery: (type: UploadType) => void;
+  onRemove: (type: UploadType) => void;
+}> = ({ type, label, document, borderColor, disabled = false, onCamera, onGallery, onRemove }) => {
+  const fmt = (b: number) =>
+    b < 1024 ? `${b} B` :
+    b < 1048576 ? `${(b / 1024).toFixed(1)} KB` :
+    `${(b / 1048576).toFixed(1)} MB`;
+
+  const activeBorderColor = disabled ? colors.neutral.gray300 : borderColor;
+
   return (
     <View style={styles.uploadContainer}>
       <View style={styles.uploadHeader}>
@@ -79,53 +167,74 @@ const UploadBox: React.FC<{
           <Text style={styles.requiredText}>Requis</Text>
         </View>
       </View>
+
       {document ? (
-        <View style={[styles.uploadedFileCard, { borderColor }]}>
+        <View style={[styles.uploadedFileCard, { borderColor: activeBorderColor }]}>
           <View style={styles.fileInfo}>
             <View style={styles.fileIconContainer}>
-              {document.uri ? (
-                <Image source={{ uri: document.uri }} style={{ width: 40, height: 40, borderRadius: 6 }} resizeMode="cover" />
-              ) : (
-                <AntDesign name="file" size={24} color={borderColor} />
-              )}
+              {document.uri
+                ? <Image source={{ uri: document.uri! }} style={styles.fileThumb} resizeMode="cover" />
+                : <AntDesign name="file" size={24} color={activeBorderColor} />
+              }
             </View>
             <View style={styles.fileDetails}>
               <View style={styles.fileHeader}>
                 <Text style={styles.fileName} numberOfLines={1}>{document.name}</Text>
                 <View style={styles.fileStatusBadge}>
                   <Feather name="check-circle" size={10} color={colors.status.success} />
-                  <Text style={styles.fileStatusText}>Validé</Text>
+                  <Text style={styles.fileStatusText}>Chargé</Text>
                 </View>
               </View>
-              <View style={styles.fileMeta}>
-                <Text style={styles.fileSize}>{formatFileSize(document.size)}</Text>
-                <View style={styles.fileTypeIndicator}>
-                  <Text style={styles.fileTypeText}>{label}</Text>
-                </View>
-              </View>
+              <Text style={styles.fileSize}>{fmt(document.size)}</Text>
             </View>
           </View>
-          <TouchableOpacity onPress={() => onRemove(type)} style={styles.removeButton}>
-            <Feather name="x" size={20} color={colors.neutral.gray500} />
-          </TouchableOpacity>
+          {!disabled && (
+            <TouchableOpacity onPress={() => onRemove(type)} style={styles.removeButton}>
+              <Feather name="x" size={20} color={colors.neutral.gray500} />
+            </TouchableOpacity>
+          )}
         </View>
       ) : (
-        <TouchableOpacity
-          onPress={() => onUpload(type)}
-          style={[styles.uploadBox, { borderColor: borderColor + '80' }]}
-          activeOpacity={0.7}
-        >
-          <LinearGradient colors={[borderColor + '15', borderColor + '25']} style={styles.uploadIconCircle}>
-            <MaterialIcons name="add-a-photo" size={28} color={borderColor} />
-          </LinearGradient>
-          <Text style={styles.uploadText}>Ajouter {label.toLowerCase()}</Text>
-          <Text style={styles.uploadHint}>Photographier ou choisir depuis la galerie{'\n'}Format : PNG, JPG ou PDF (max 5MB)</Text>
-        </TouchableOpacity>
+        <View style={[
+          styles.uploadBoxContainer,
+          { borderColor: activeBorderColor + '80' },
+          disabled && styles.uploadBoxDisabled,
+        ]}>
+          {disabled ? (
+            <View style={styles.disabledOverlay}>
+              <Text style={styles.disabledText}>🚫 Ajout de document désactivé</Text>
+              <Text style={styles.disabledSubText}>Nombre maximal de tentatives atteint</Text>
+            </View>
+          ) : (
+            <>
+              <TouchableOpacity
+                onPress={() => onCamera(type)}
+                style={[styles.uploadActionBtn, { backgroundColor: borderColor }]}
+                activeOpacity={0.8}
+              >
+                <Feather name="camera" size={20} color="#fff" />
+                <Text style={styles.uploadActionBtnText}>Prendre une photo</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => onGallery(type)}
+                style={[styles.uploadActionBtnSecondary, { borderColor }]}
+                activeOpacity={0.8}
+              >
+                <Feather name="image" size={20} color={borderColor} />
+                <Text style={[styles.uploadActionBtnSecondaryText, { color: borderColor }]}>Depuis la galerie</Text>
+              </TouchableOpacity>
+              <Text style={styles.uploadHint}>
+                Cadre adapté au format {type === 'passport' ? 'passeport (125×88mm)' : 'CIN (85.6×54mm)'}
+              </Text>
+            </>
+          )}
+        </View>
       )}
     </View>
   );
 };
 
+// ── ProgressBar ───────────────────────────────────────────────
 const ProgressBar: React.FC<{ count: number; total: number }> = ({ count, total }) => (
   <View style={styles.progressSection}>
     <View style={styles.progressBar}>
@@ -138,243 +247,242 @@ const ProgressBar: React.FC<{ count: number; total: number }> = ({ count, total 
   </View>
 );
 
-const UploadModal: React.FC<{
-  visible: boolean; onClose: () => void; onTakePhoto: () => void;
-  onPickDocument: () => void; documentType: string;
-}> = ({ visible, onClose, onTakePhoto, onPickDocument, documentType }) => (
-  <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-    <View style={styles.modalOverlay}>
-      <View style={styles.modalContent}>
-        <View style={styles.modalHeader}>
-          <Text style={styles.modalTitle}>Ajouter {documentType}</Text>
-          <TouchableOpacity onPress={onClose}>
-            <Feather name="x" size={24} color={colors.neutral.gray600} />
-          </TouchableOpacity>
-        </View>
-        <View style={styles.modalBody}>
-          <TouchableOpacity style={styles.modalOption} onPress={onTakePhoto}>
-            <LinearGradient colors={[colors.atb.red + '15', colors.atb.red + '25']} style={styles.modalOptionIcon}>
-              <Feather name="camera" size={28} color={colors.atb.red} />
-            </LinearGradient>
-            <View style={styles.modalOptionContent}>
-              <Text style={styles.modalOptionTitle}>Prendre une photo</Text>
-              <Text style={styles.modalOptionDescription}>Utilisez votre caméra pour photographier le document</Text>
-            </View>
-            <Feather name="chevron-right" size={20} color={colors.neutral.gray400} />
-          </TouchableOpacity>
-          <View style={styles.modalDivider} />
-          <TouchableOpacity style={styles.modalOption} onPress={onPickDocument}>
-            <LinearGradient colors={[colors.neutral.gray600 + '15', colors.neutral.gray600 + '25']} style={styles.modalOptionIcon}>
-              <Feather name="folder" size={28} color={colors.neutral.gray600} />
-            </LinearGradient>
-            <View style={styles.modalOptionContent}>
-              <Text style={styles.modalOptionTitle}>Choisir depuis la galerie</Text>
-              <Text style={styles.modalOptionDescription}>Sélectionnez une photo ou un PDF existant</Text>
-            </View>
-            <Feather name="chevron-right" size={20} color={colors.neutral.gray400} />
-          </TouchableOpacity>
-        </View>
-        <TouchableOpacity style={styles.modalCancelButton} onPress={onClose}>
-          <Text style={styles.modalCancelText}>Annuler</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  </Modal>
-);
-
-// ── Composant principal ──────────────────────────────────────
+// ── Composant principal ───────────────────────────────────────
 const DocumentsJustificatifsScreen: React.FC<Props> = ({ navigation, route }) => {
   const { customerId } = route.params;
-  const fromRecap = route.params?.fromRecap ?? false;
+  const formData = (route.params?.formData ?? {}) as import('../services/ocrApi').OcrFormData;
 
+  // ── Documents ────────────────────────────────────────────
   const [cinRectoDocument, setCinRectoDocument] = useState<UploadedDocument | null>(null);
   const [cinVersoDocument, setCinVersoDocument] = useState<UploadedDocument | null>(null);
   const [passportDocument, setPassportDocument] = useState<UploadedDocument | null>(null);
   const [usePassport, setUsePassport]           = useState(false);
-  const [showUploadModal, setShowUploadModal]   = useState(false);
-  const [currentUploadType, setCurrentUploadType] = useState<UploadType | null>(null);
-  const [isLoading, setIsLoading]   = useState(false);
-  const [isFetching, setIsFetching] = useState(false);
 
-  // ── Chargement données existantes ────────────────────────
+  // ── États UI ─────────────────────────────────────────────
+  const [isLoading, setIsLoading] = useState(false);
+
+  // ── OCR ──────────────────────────────────────────────────
+  const { ocrState, attempts, maxAttempts, isBlocked, scanFile, resetOcr } = useOcrScan();
+  const [ocrResults, setOcrResults] = useState<Record<string, OcrScanResult | null>>({
+    cinRecto: null,
+    passport: null,
+  });
+
+  // ── Sauvegarde auto en attente post-OCR ──────────────────
+  const [pendingSave, setPendingSave] = useState<{
+    type: UploadType; doc: UploadedDocument;
+  } | null>(null);
+
+  // ── Permissions au montage ────────────────────────────────
   useEffect(() => {
-    if (fromRecap) {
-      setIsFetching(true);
-      getCustomer(customerId)
-        .then((data: any) => {
-          setUsePassport(data.usePassport ?? false);
-          // On recrée des objets "document" factices si les paths existent
-          if (data.idCardFrontPath) {
-            setCinRectoDocument({ name: 'Face avant CIN', size: 0, type: 'image/jpeg', uri: data.idCardFrontPath });
-          }
-          if (data.idCardBackPath) {
-            setCinVersoDocument({ name: 'Face arrière CIN', size: 0, type: 'image/jpeg', uri: data.idCardBackPath });
-          }
-          if (data.passportPath) {
-            setPassportDocument({ name: 'Passeport', size: 0, type: 'image/jpeg', uri: data.passportPath });
-          }
-        })
-        .catch(() => Alert.alert('Erreur', 'Impossible de charger vos documents.'))
-        .finally(() => setIsFetching(false));
-    }
+    (async () => {
+      try {
+        const cam = await ImagePicker.requestCameraPermissionsAsync();
+        const lib = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (cam.status !== 'granted' || lib.status !== 'granted') {
+          Alert.alert(
+            'Permissions nécessaires',
+            "ATB DigiPack a besoin d'accéder à votre caméra et vos photos pour scanner vos documents d'identité.\n\nAllez dans Réglages > Expo Go pour les activer.",
+            [{ text: 'Compris' }]
+          );
+        }
+      } catch (err) {
+        console.warn('[Permissions]', err);
+      }
+    })();
   }, []);
 
-  // ── Helpers ──────────────────────────────────────────────
-  const getDocumentTypeLabel = (type: UploadType): string => {
-    if (type === 'cinRecto') return 'face avant de la CIN';
-    if (type === 'cinVerso') return 'face arrière de la CIN';
-    return 'passeport';
+  // ── Sauvegarde auto après OCR validé ─────────────────────
+  useEffect(() => {
+    if (!pendingSave || ocrState.isScanning) return;
+    const { type, doc } = pendingSave;
+    const key    = type === 'passport' ? 'passport' : 'cinRecto';
+    const result = ocrResults[key];
+    if (!result) return;
+    const isValid = result.matchStatus === 'MATCH' ||
+      (result.matchStatus === 'PARTIAL' && result.canProceed === true);
+    if (isValid) autoSaveDocument(type, doc);
+    setPendingSave(null);
+  }, [ocrResults, ocrState.isScanning, pendingSave]);
+
+  // ── Sauvegarde silencieuse ────────────────────────────────
+  const autoSaveDocument = async (type: UploadType, doc: UploadedDocument) => {
+    try {
+      await saveDocuments(customerId, {
+        usePassport,
+        idCardFrontPath: (type === 'cinRecto' ? doc.uri : cinRectoDocument?.uri ?? null) as string | null,
+        idCardBackPath:  (type === 'cinVerso' ? doc.uri : cinVersoDocument?.uri  ?? null) as string | null,
+        passportPath:    (type === 'passport' ? doc.uri : passportDocument?.uri  ?? null) as string | null,
+      });
+      console.log('[AutoSave] ✅', type);
+    } catch (err) {
+      console.warn('[AutoSave] ⚠️', err);
+    }
   };
 
+  // ── Setter document ───────────────────────────────────────
   const setDocument = (type: UploadType, doc: UploadedDocument | null) => {
-    if (type === 'cinRecto') setCinRectoDocument(doc);
-    if (type === 'cinVerso') setCinVersoDocument(doc);
-    if (type === 'passport') setPassportDocument(doc);
+    if (type === 'cinRecto')      setCinRectoDocument(doc);
+    else if (type === 'cinVerso') setCinVersoDocument(doc);
+    else                          setPassportDocument(doc);
   };
 
-  const canContinue = (): boolean =>
-    usePassport ? passportDocument !== null : cinRectoDocument !== null && cinVersoDocument !== null;
+  // ── canContinue ───────────────────────────────────────────
+  const canContinue = (): boolean => {
+    if (usePassport) {
+      if (!passportDocument) return false;
+      const r = ocrResults.passport;
+      if (!r) return false;
+      return r.matchStatus === 'MATCH' || (r.matchStatus === 'PARTIAL' && r.canProceed === true);
+    }
+    if (!cinRectoDocument || !cinVersoDocument) return false;
+    const r = ocrResults.cinRecto;
+    if (!r) return false;
+    return r.matchStatus === 'MATCH' || (r.matchStatus === 'PARTIAL' && r.canProceed === true);
+  };
 
-  // ── Caméra ───────────────────────────────────────────────
-  const requestCameraPermission = async (): Promise<boolean> => {
+  // ── OCR avec gestion des tentatives ──────────────────────
+  const triggerOcr = async (type: UploadType, uri: string, name: string) => {
+    if (type === 'cinVerso') return;
+
+    const key: OcrDocKey = type === 'passport' ? 'passport' : 'cinRecto';
+
+    if (isBlocked(key)) {
+      Alert.alert(
+        '🚫 Vérification bloquée',
+        'Vous avez dépassé le nombre maximal de tentatives pour ce document.\n\nVotre dossier a été signalé pour vérification manuelle.\n\nContactez-nous au 71 143 000.',
+        [{ text: 'Compris' }]
+      );
+      return;
+    }
+
+    const result = await scanFile({
+      uri, name, mimeType: 'image/jpeg',
+      docType: UPLOAD_TO_OCR[type],
+      formData, customerId,
+    });
+
+    if (result) {
+      const resultKey = type === 'passport' ? 'passport' : 'cinRecto';
+      setOcrResults(prev => ({ ...prev, [resultKey]: result }));
+
+      const currentAttemptCount = attempts[key] + 1;
+      const isValid = result.matchStatus === 'MATCH' ||
+        (result.matchStatus === 'PARTIAL' && result.canProceed === true);
+
+      if (currentAttemptCount >= maxAttempts && !isValid) {
+        setTimeout(() => {
+          Alert.alert(
+            '🚫 Dossier signalé',
+            "Vous avez atteint le nombre maximal de tentatives de vérification d'identité.\n\nVotre dossier a été signalé et sera examiné par notre équipe de conformité sous 24 à 48 heures.\n\nPour toute question : 71 143 000.",
+            [{ text: 'Compris' }]
+          );
+        }, 700);
+      }
+    }
+  };
+
+  // ── Traitement photo (compression + set + OCR) ────────────
+  const processAndSet = useCallback(async (type: UploadType, rawUri: string) => {
+    const compressed = await compressImage(rawUri);
+    const uri        = compressed?.uri ?? rawUri;
+    const fileSize   = compressed?.fileSize ?? 0;
+    const fileName   = `atb_${type}_${Date.now()}.jpg`;
+
+    const doc: UploadedDocument = { name: fileName, size: fileSize, type: 'image/jpeg', uri };
+    setDocument(type, doc);
+
+    if (type !== 'cinVerso') {
+      setPendingSave({ type, doc });
+      await triggerOcr(type, uri, fileName);
+    } else {
+      await autoSaveDocument(type, doc);
+    }
+  }, [cinRectoDocument, cinVersoDocument, passportDocument, usePassport, attempts]);
+
+  // ── Caméra ────────────────────────────────────────────────
+  const openCamera = async (type: UploadType) => {
+    const key: OcrDocKey = type === 'passport' ? 'passport' : 'cinRecto';
+    if (type !== 'cinVerso' && isBlocked(key)) {
+      Alert.alert('Vérification bloquée', 'Nombre maximal de tentatives atteint pour ce document.');
+      return;
+    }
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission requise', "L'accès à la caméra est nécessaire pour photographier vos documents.");
-      return false;
-    }
-    return true;
-  };
-
-  const handleTakePhoto = async (type: UploadType) => {
-  const ok = await requestCameraPermission();
-  if (!ok) return;
-
-  try {
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.8,
-    });
-
-    // Vérification complète et sécurisée
-    if (result.canceled) {
-      // L'utilisateur a annulé → on ne fait rien
+      Alert.alert('Caméra non autorisée', "Allez dans Réglages > Expo Go > Caméra et activez l'accès.", [{ text: 'Compris' }]);
       return;
     }
-
-    // Ici on sait que canceled = false
-    // Donc assets existe et est un tableau (même vide)
-    if (!result.assets || result.assets.length === 0) {
-      Alert.alert('Aucune photo', 'Aucune image n’a été capturée.');
-      return;
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes:    ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect:        DOC_ASPECT[type],
+        quality:       0.92,
+        exif:          false,
+      });
+      if (result.canceled || !result.assets?.length) return;
+      await processAndSet(type, result.assets[0].uri);
+    } catch (err: any) {
+      console.error('[Camera]', err);
+      Alert.alert('Erreur', 'Impossible de prendre la photo. Réessayez.');
     }
-
-    const photo = result.assets[0];
-    setDocument(type, {
-      name: `photo_${type}_${Date.now()}.jpg`,
-      size: photo.fileSize || 0,
-      type: 'image/jpeg',
-      uri: photo.uri,
-    });
-
-    setShowUploadModal(false);
-    Alert.alert('Succès', 'Photo capturée avec succès !');
-  } catch (err) {
-    console.error(err);
-    Alert.alert('Erreur', 'Impossible de prendre la photo');
-  }
-};
-
-  const handleDocumentPick = async (type: UploadType) => {
-  try {
-    const result = await DocumentPicker.getDocumentAsync({
-      type: ['image/png', 'image/jpeg', 'application/pdf'],
-      copyToCacheDirectory: true,
-    });
-
-    // Vérification sécurisée
-    if (result.assets === null || result.assets.length === 0) {
-      // Annulation ou rien sélectionné
-      return;
-    }
-
-    // Ici assets est un tableau non vide
-    const file = result.assets[0];
-
-    setDocument(type, {
-      name: file.name,
-      size: file.size || 0,
-      type: file.mimeType || 'unknown',
-      uri: file.uri,
-    });
-
-    setShowUploadModal(false);
-    Alert.alert('Succès', 'Document sélectionné avec succès !');
-  } catch (err) {
-    console.error(err);
-    Alert.alert('Erreur', 'Impossible de sélectionner le document');
-  }
-};
-
-  const openUploadOptions = (type: UploadType) => {
-    setCurrentUploadType(type);
-    setShowUploadModal(true);
   };
 
-  const toggleUsePassport = () => {
-    if (!usePassport) { setCinRectoDocument(null); setCinVersoDocument(null); }
-    setUsePassport(prev => !prev);
+  // ── Galerie ────────────────────────────────────────────────
+  const openGallery = async (type: UploadType) => {
+    const key: OcrDocKey = type === 'passport' ? 'passport' : 'cinRecto';
+    if (type !== 'cinVerso' && isBlocked(key)) {
+      Alert.alert('Vérification bloquée', 'Nombre maximal de tentatives atteint pour ce document.');
+      return;
+    }
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Galerie non autorisée', "Allez dans Réglages > Expo Go > Photos et activez l'accès.", [{ text: 'Compris' }]);
+      return;
+    }
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes:     ImagePicker.MediaTypeOptions.Images,
+        allowsEditing:  true,
+        aspect:         DOC_ASPECT[type],
+        quality:        0.92,
+        selectionLimit: 1,
+        exif:           false,
+      });
+      if (result.canceled || !result.assets?.length) return;
+      await processAndSet(type, result.assets[0].uri);
+    } catch (err: any) {
+      console.error('[Gallery]', err);
+      Alert.alert('Erreur', "Impossible d'accéder à la galerie. Réessayez.");
+    }
   };
 
-  // ── Soumission ───────────────────────────────────────────
+  // ── Soumission finale ─────────────────────────────────────
   const handleContinue = async () => {
     if (!canContinue()) {
-      Alert.alert('Information', usePassport
-        ? 'Veuillez télécharger ou photographier votre passeport.'
-        : 'Veuillez télécharger les deux côtés de votre CIN.');
+      Alert.alert('Documents manquants', usePassport
+        ? 'Ajoutez votre passeport et attendez la vérification.'
+        : 'Ajoutez les deux faces de votre CIN et attendez la vérification.');
       return;
     }
     setIsLoading(true);
     try {
-      const payload = {
+      await saveDocuments(customerId, {
         usePassport,
-        idCardFrontPath: cinRectoDocument?.uri ?? null,
-        idCardBackPath:  cinVersoDocument?.uri  ?? null,
-        passportPath:    passportDocument?.uri   ?? null,
-      };
-
-      if (fromRecap) {
-        // ✅ MODE MODIFICATION
-        await updateCustomer(customerId, payload);
-        Alert.alert('✓ Documents mis à jour', 'Vos documents ont été sauvegardés.', [
-          { text: 'Retour au récapitulatif', onPress: () => {
-            // @ts-ignore
-            navigation.navigate('Recapitulatif', { customerId });
-          }},
-        ]);
-      } else {
-        // ✅ MODE CRÉATION
-        await saveDocuments(customerId, payload);
-        // @ts-ignore
-        navigation.navigate('Personaldataform', { customerId });
-      }
-    } catch (error: any) {
-      Alert.alert('Erreur', error.message || 'Erreur lors de la sauvegarde des documents.');
+        idCardFrontPath: (cinRectoDocument?.uri ?? null) as string | null,
+        idCardBackPath:  (cinVersoDocument?.uri  ?? null) as string | null,
+        passportPath:    (passportDocument?.uri  ?? null) as string | null,
+      });
+      // @ts-ignore
+      navigation.navigate('Personaldataform', { customerId });
+    } catch (e: any) {
+      Alert.alert('Erreur', e.message || 'Erreur lors de la sauvegarde.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  if (isFetching) {
-    return (
-      <SafeAreaView style={styles.loadingScreen} edges={['top']}>
-        <ActivityIndicator size="large" color={colors.atb.red} />
-        <Text style={styles.loadingText}>Chargement de vos documents...</Text>
-      </SafeAreaView>
-    );
-  }
-
+  // ── Rendu ─────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.neutral.gray100} />
@@ -386,25 +494,18 @@ const DocumentsJustificatifsScreen: React.FC<Props> = ({ navigation, route }) =>
 
               {/* Titre */}
               <View style={styles.titleSection}>
-                <Text style={styles.title}>{fromRecap ? 'Modifier les documents' : "Documents d'identité"}</Text>
-                <Text style={styles.subtitle}>Veuillez renseigner le formulaire d'identification.</Text>
+                <Text style={styles.title}>Documents d'identité</Text>
+                <Text style={styles.subtitle}>Veuillez fournir une pièce d'identité valide.</Text>
+                <View style={styles.phaseIndicatorWrapper}>
+                  <PhaseIndicator currentPhase={2} />
+                </View>
               </View>
 
-              {/* Bannière modification */}
-              {fromRecap && (
-                <View style={styles.editBanner}>
-                  
-                  <Text style={styles.editBannerText}>
-                    Mode modification — Documents précédents affichés. Vous pouvez les remplacer.
-                  </Text>
-                </View>
-              )}
-
-              {/* Introduction */}
+              {/* Intro */}
               <View style={[styles.card, styles.introCard]}>
                 <View style={styles.introHeader}>
                   <LinearGradient colors={[colors.atb.red, '#C41E3A']} style={styles.introIconContainer}>
-                    <MaterialIcons name="verified-user" size={20} color={colors.neutral.white} />
+                    <MaterialIcons name="verified-user" size={20} color="#fff" />
                   </LinearGradient>
                   <View>
                     <Text style={styles.introTitle}>Vérification d'identité</Text>
@@ -412,52 +513,125 @@ const DocumentsJustificatifsScreen: React.FC<Props> = ({ navigation, route }) =>
                   </View>
                 </View>
                 <Text style={styles.introText}>
-                  Pour finaliser votre inscription, nous avons besoin de vérifier votre identité. Cette étape est obligatoire pour se conformer aux réglementations bancaires.
+                  Pour finaliser votre inscription, nous avons besoin de vérifier votre identité.
+                  Cette étape est obligatoire pour se conformer aux réglementations bancaires.
                 </Text>
               </View>
 
-              {/* Document principal */}
+              {/* Section document */}
               <View style={styles.card}>
                 <View style={styles.documentSection}>
                   <View style={styles.sectionHeader}>
                     <LinearGradient
-                      colors={usePassport ? [colors.neutral.gray600, colors.neutral.gray700] : [colors.atb.red, '#C41E3A']}
+                      colors={usePassport
+                        ? [colors.neutral.gray600, colors.neutral.gray700]
+                        : [colors.atb.red, '#C41E3A']
+                      }
                       style={styles.sectionNumber}
                     >
                       <Text style={styles.sectionNumberText}>1</Text>
                     </LinearGradient>
-                    <Text style={styles.sectionTitle}>{usePassport ? 'Passeport' : "Carte d'Identité Nationale"}</Text>
+                    <Text style={styles.sectionTitle}>
+                      {usePassport ? 'Passeport' : "Carte d'Identité Nationale"}
+                    </Text>
                   </View>
 
                   <View style={styles.reservedNotice}>
                     <Text style={styles.reservedText}>
                       {usePassport
-                        ? "Téléchargez ou photographiez une copie lisible de la page principale de votre passeport."
-                        : "Veuillez télécharger ou photographier une copie lisible des deux côtés de votre Carte Nationale d'Identité."}
+                        ? "Photographiez la page principale de votre passeport (page avec votre photo)."
+                        : "Photographiez les deux côtés de votre Carte Nationale d'Identité."}
                     </Text>
                     <Text style={styles.instructionText}>
-                      Assurez-vous que toutes les informations soient clairement visibles et que le document soit valide.
+                      Le cadre de recadrage s'adapte automatiquement au format exact du document.
                     </Text>
                   </View>
 
                   {!usePassport ? (
                     <>
-                      <UploadBox type="cinRecto" label="Face avant de la CIN" document={cinRectoDocument} borderColor={colors.atb.red} onUpload={openUploadOptions} onRemove={() => setCinRectoDocument(null)} />
-                      <UploadBox type="cinVerso" label="Face arrière de la CIN" document={cinVersoDocument} borderColor={colors.atb.red} onUpload={openUploadOptions} onRemove={() => setCinVersoDocument(null)} />
-                      <ProgressBar count={(cinRectoDocument ? 1 : 0) + (cinVersoDocument ? 1 : 0)} total={2} />
+                      {!cinRectoDocument && <DocumentScanGuide docType="cin" />}
+                      <UploadBox
+                        type="cinRecto"
+                        label="Face avant (Recto)"
+                        document={cinRectoDocument}
+                        borderColor={colors.atb.red}
+                        disabled={isBlocked('cinRecto')}
+                        onCamera={openCamera}
+                        onGallery={openGallery}
+                        onRemove={() => {
+                          setCinRectoDocument(null);
+                          setOcrResults(p => ({ ...p, cinRecto: null }));
+                          resetOcr();
+                        }}
+                      />
+                      <OcrResultBadge
+                        isScanning={ocrState.isScanning && ocrState.currentScanType === 'CIN_RECTO'}
+                        result={ocrResults.cinRecto}
+                        attemptCount={attempts.cinRecto}
+                        maxAttempts={maxAttempts}
+                      />
+
+                      <View style={styles.separator}>
+                        <View style={styles.separatorLine} />
+                        <Text style={styles.separatorText}>+ Face arrière</Text>
+                        <View style={styles.separatorLine} />
+                      </View>
+
+                      <UploadBox
+                        type="cinVerso"
+                        label="Face arrière (Verso)"
+                        document={cinVersoDocument}
+                        borderColor={colors.atb.red}
+                        onCamera={openCamera}
+                        onGallery={openGallery}
+                        onRemove={() => setCinVersoDocument(null)}
+                      />
+                      <ProgressBar
+                        count={(cinRectoDocument ? 1 : 0) + (cinVersoDocument ? 1 : 0)}
+                        total={2}
+                      />
                     </>
                   ) : (
-                    <UploadBox type="passport" label="Page principale du passeport" document={passportDocument} borderColor={colors.neutral.gray600} onUpload={openUploadOptions} onRemove={() => setPassportDocument(null)} />
+                    <>
+                      {!passportDocument && <DocumentScanGuide docType="passport" />}
+                      <UploadBox
+                        type="passport"
+                        label="Page principale du passeport"
+                        document={passportDocument}
+                        borderColor={colors.neutral.gray600}
+                        disabled={isBlocked('passport')}
+                        onCamera={openCamera}
+                        onGallery={openGallery}
+                        onRemove={() => {
+                          setPassportDocument(null);
+                          setOcrResults(p => ({ ...p, passport: null }));
+                          resetOcr();
+                        }}
+                      />
+                      <OcrResultBadge
+                        isScanning={ocrState.isScanning && ocrState.currentScanType === 'PASSPORT'}
+                        result={ocrResults.passport}
+                        attemptCount={attempts.passport}
+                        maxAttempts={maxAttempts}
+                      />
+                    </>
                   )}
 
-                  <TouchableOpacity style={styles.alternativeOption} onPress={toggleUsePassport} activeOpacity={0.7}>
+                  {/* Toggle CIN / Passeport */}
+                  <TouchableOpacity
+                    style={styles.alternativeOption}
+                    onPress={() => setUsePassport(p => !p)}
+                    activeOpacity={0.7}
+                  >
                     <View style={styles.alternativeIcon}>
                       <Ionicons name="swap-horizontal" size={20} color={colors.neutral.gray600} />
                     </View>
                     <View style={styles.alternativeContent}>
-                      <Text style={styles.alternativeTitle}>{usePassport ? 'Utiliser une CIN' : 'Utiliser un passeport'}</Text>
+                      <Text style={styles.alternativeTitle}>
+                        {usePassport ? 'Utiliser une CIN' : 'Utiliser un passeport'}
+                      </Text>
                       <Text style={styles.alternativeSubtitle}>
-                        {usePassport ? "Retourner à la Carte d'Identité Nationale" : "Si vous n'avez pas de CIN, utilisez votre passeport"}
+                        Vos photos déjà ajoutées restent enregistrées
                       </Text>
                     </View>
                     <Feather name="chevron-right" size={20} color={colors.neutral.gray400} />
@@ -465,21 +639,14 @@ const DocumentsJustificatifsScreen: React.FC<Props> = ({ navigation, route }) =>
                 </View>
               </View>
 
-              {/* Boutons */}
+              {/* Boutons navigation */}
               <View style={styles.buttonContainer}>
                 <TouchableOpacity
                   style={styles.backButton}
-                  onPress={() => {
-                    if (fromRecap) {
-                      // @ts-ignore
-                      navigation.navigate('Recapitulatif', { customerId });
-                    } else {
-                      navigation.goBack();
-                    }
-                  }}
+                  onPress={() => navigation.goBack()}
                 >
                   <Feather name="arrow-left" size={18} color={colors.neutral.gray700} />
-                  <Text style={styles.backButtonText}>{fromRecap ? 'Annuler' : 'Retour'}</Text>
+                  <Text style={styles.backButtonText}>Retour</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -489,13 +656,19 @@ const DocumentsJustificatifsScreen: React.FC<Props> = ({ navigation, route }) =>
                   activeOpacity={0.8}
                 >
                   <LinearGradient
-                    colors={canContinue() ? [colors.atb.red, '#C41E3A'] : [colors.neutral.gray300, colors.neutral.gray400]}
+                    colors={canContinue()
+                      ? [colors.atb.red, '#C41E3A']
+                      : [colors.neutral.gray300, colors.neutral.gray400]
+                    }
                     style={styles.continueGradient}
                   >
-                    <Text style={styles.continueButtonText}>
-                      {isLoading ? 'Envoi...' : fromRecap ? ' Sauvegarder' : 'Vérifier et continuer'}
-                    </Text>
-                    {!isLoading && <Feather name="arrow-right" size={18} color={colors.neutral.white} />}
+                    {isLoading
+                      ? <ActivityIndicator color="#fff" size="small" />
+                      : <>
+                          <Text style={styles.continueButtonText}>Vérifier et continuer</Text>
+                          <Feather name="arrow-right" size={18} color="#fff" />
+                        </>
+                    }
                   </LinearGradient>
                 </TouchableOpacity>
               </View>
@@ -504,116 +677,126 @@ const DocumentsJustificatifsScreen: React.FC<Props> = ({ navigation, route }) =>
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
-
-        <UploadModal
-          visible={showUploadModal}
-          onClose={() => setShowUploadModal(false)}
-          onTakePhoto={() => currentUploadType && handleTakePhoto(currentUploadType)}
-          onPickDocument={() => currentUploadType && handleDocumentPick(currentUploadType)}
-          documentType={currentUploadType ? getDocumentTypeLabel(currentUploadType) : ''}
-        />
       </View>
     </SafeAreaView>
   );
 };
 
+// ── Styles ────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.neutral.white },
-  flex: { flex: 1 },
-  loadingScreen: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.neutral.white },
-  loadingText: { marginTop: 16, fontSize: 15, color: colors.neutral.gray600 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.neutral.gray300, backgroundColor: colors.neutral.gray100 },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  safeArea:      { flex: 1, backgroundColor: colors.neutral.white },
+  flex:          { flex: 1 },
+
+  header:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.neutral.gray300, backgroundColor: colors.neutral.gray100 },
+  headerLeft:    { flexDirection: 'row', alignItems: 'center', gap: 12 },
   logoContainer: { shadowColor: colors.atb.red, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 6 },
-  logo: { width: 40, height: 40 },
-  logoGradient: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  bankName: { fontSize: 16, fontWeight: '700', color: colors.atb.red, letterSpacing: 0.3 },
-  bankSubtitle: { fontSize: 11, color: colors.neutral.gray500, marginTop: 2, fontWeight: '500' },
+  logo:          { width: 40, height: 40 },
+  logoGradient:  { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  bankName:      { fontSize: 16, fontWeight: '700', color: colors.atb.red, letterSpacing: 0.3 },
+  bankSubtitle:  { fontSize: 11, color: colors.neutral.gray500, marginTop: 2 },
   digipackBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 4 },
-  digipackText: { fontSize: 10, fontWeight: '800', color: colors.neutral.white, letterSpacing: 2 },
+  digipackText:  { fontSize: 10, fontWeight: '800', color: '#fff', letterSpacing: 2 },
+
   scrollContent: { flexGrow: 1 },
-  content: { padding: 24 },
-  titleSection: { marginBottom: 16 },
-  title: { fontSize: 26, fontWeight: '700', color: colors.neutral.gray900, marginBottom: 6, letterSpacing: -0.3 },
-  subtitle: { fontSize: 13, color: colors.neutral.gray600, fontWeight: '400', lineHeight: 19 },
-  editBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(200,35,51,0.07)', borderWidth: 1, borderColor: 'rgba(200,35,51,0.2)', borderRadius: 10, padding: 14, marginBottom: 16 },
-  editBannerIcon: { fontSize: 18 },
-  editBannerText: { flex: 1, fontSize: 13, color: colors.atb.red, fontWeight: '500' },
-  card: { backgroundColor: colors.neutral.white, borderRadius: 12, marginBottom: 20, shadowColor: colors.neutral.gray900, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
-  introCard: { padding: 20, marginBottom: 16 },
-  introHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  content:       { padding: 24 },
+
+  phaseIndicatorWrapper:  { marginTop: 5 },
+  phaseContainer:         { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingVertical: 8 },
+  phaseItem:              { alignItems: 'center', flex: 1 },
+  phaseRadioOuter:        { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: colors.neutral.gray400, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
+  phaseRadioInner:        { width: 10, height: 10, borderRadius: 5, backgroundColor: 'transparent' },
+  phaseRadioInnerActive:  { backgroundColor: colors.atb.red },
+  phaseRadioActive:       { borderColor: colors.atb.red },
+  phaseRadioCompleted:    { borderColor: colors.atb.red, backgroundColor: colors.atb.red },
+  phaseRadioCheck:        { fontSize: 12, color: '#fff', fontWeight: 'bold' },
+  phaseLabel:             { fontSize: 10, color: colors.neutral.gray600, fontWeight: '500', textAlign: 'center' },
+  phaseLabelActive:       { color: colors.atb.red, fontWeight: '700' },
+  phaseLabelCompleted:    { color: colors.neutral.gray800, fontWeight: '600' },
+  phaseConnector:         { width: 20, height: 2, backgroundColor: colors.neutral.gray300, alignSelf: 'center', marginTop: -10 },
+
+  titleSection: { marginBottom: 12 },
+  title:        { fontSize: 26, fontWeight: '700', color: colors.neutral.gray900, marginBottom: 6, letterSpacing: -0.3 },
+  subtitle:     { fontSize: 13, color: colors.neutral.gray600, lineHeight: 19, marginBottom: 8 },
+
+  card:      { backgroundColor: colors.neutral.white, borderRadius: 12, marginBottom: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+  introCard: { padding: 20, marginBottom: 12 },
+
+  introHeader:        { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   introIconContainer: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  introTitle: { fontSize: 16, fontWeight: '700', color: colors.neutral.gray900, marginBottom: 2 },
-  introSubtitle: { fontSize: 12, color: colors.neutral.gray500, fontWeight: '500' },
-  introText: { fontSize: 13, color: colors.neutral.gray700, lineHeight: 20, fontWeight: '400' },
-  documentSection: { padding: 20 },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
-  sectionNumber: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  sectionNumberText: { fontSize: 14, fontWeight: '800', color: colors.neutral.white },
-  sectionTitle: { fontSize: 18, fontWeight: '700', color: colors.neutral.gray900 },
-  reservedNotice: { marginBottom: 24, backgroundColor: colors.neutral.offWhite, padding: 16, borderRadius: 8, borderLeftWidth: 3, borderLeftColor: colors.atb.red },
-  reservedText: { fontSize: 14, color: colors.neutral.gray800, fontWeight: '600', lineHeight: 20, marginBottom: 8 },
-  instructionText: { fontSize: 12, color: colors.neutral.gray600, lineHeight: 18, fontWeight: '400' },
-  uploadContainer: { marginBottom: 20 },
-  uploadHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  uploadLabel: { fontSize: 15, color: colors.neutral.gray800, fontWeight: '600' },
-  requiredIndicator: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  requiredStar: { color: colors.atb.red, fontSize: 16, fontWeight: 'bold' },
-  requiredText: { fontSize: 12, color: colors.neutral.gray500, fontWeight: '500' },
-  uploadBox: { borderWidth: 2, borderStyle: 'dashed', borderRadius: 10, padding: 28, alignItems: 'center', backgroundColor: colors.neutral.offWhite, minHeight: 150, justifyContent: 'center' },
-  uploadIconCircle: { width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
-  uploadText: { fontSize: 16, color: colors.neutral.gray900, fontWeight: '600', marginBottom: 6, textAlign: 'center' },
-  uploadHint: { fontSize: 13, color: colors.neutral.gray500, textAlign: 'center', lineHeight: 18 },
-  uploadedFileCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.neutral.offWhite, borderWidth: 1.5, borderRadius: 10, padding: 16 },
-  fileInfo: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  introTitle:         { fontSize: 16, fontWeight: '700', color: colors.neutral.gray900, marginBottom: 2 },
+  introSubtitle:      { fontSize: 12, color: colors.neutral.gray500 },
+  introText:          { fontSize: 13, color: colors.neutral.gray700, lineHeight: 20 },
+
+  documentSection:   { padding: 20 },
+  sectionHeader:     { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  sectionNumber:     { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  sectionNumberText: { fontSize: 14, fontWeight: '800', color: '#fff' },
+  sectionTitle:      { fontSize: 18, fontWeight: '700', color: colors.neutral.gray900 },
+
+  reservedNotice:  { marginBottom: 16, backgroundColor: colors.neutral.offWhite, padding: 16, borderRadius: 8, borderLeftWidth: 3, borderLeftColor: colors.atb.red },
+  reservedText:    { fontSize: 14, color: colors.neutral.gray800, fontWeight: '600', lineHeight: 20, marginBottom: 8 },
+  instructionText: { fontSize: 12, color: colors.neutral.gray600, lineHeight: 18 },
+
+  separator:     { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 16 },
+  separatorLine: { flex: 1, height: 1, backgroundColor: colors.neutral.gray200 },
+  separatorText: { fontSize: 11, fontWeight: '600', color: colors.neutral.gray400 },
+
+  uploadContainer:             { marginBottom: 12 },
+  uploadHeader:                { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  uploadLabel:                 { fontSize: 15, color: colors.neutral.gray800, fontWeight: '600' },
+  requiredIndicator:           { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  requiredStar:                { color: colors.atb.red, fontSize: 16, fontWeight: 'bold' },
+  requiredText:                { fontSize: 12, color: colors.neutral.gray500 },
+  uploadHint:                  { fontSize: 12, color: colors.neutral.gray400, textAlign: 'center', lineHeight: 17, marginTop: 8 },
+  uploadBoxContainer:          { borderWidth: 2, borderStyle: 'dashed', borderRadius: 12, padding: 16, backgroundColor: colors.neutral.offWhite, gap: 10 },
+  uploadBoxDisabled:           { backgroundColor: '#f3f4f6', borderColor: '#d1d5db' },
+  disabledOverlay:             { alignItems: 'center', paddingVertical: 20, gap: 6 },
+  disabledText:                { fontSize: 14, fontWeight: '700', color: '#6d28d9' },
+  disabledSubText:             { fontSize: 12, color: '#7c3aed' },
+  uploadActionBtn:             { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, borderRadius: 10, paddingVertical: 14, paddingHorizontal: 20 },
+  uploadActionBtnText:         { fontSize: 15, fontWeight: '700', color: '#fff' },
+  uploadActionBtnSecondary:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, borderRadius: 10, paddingVertical: 12, paddingHorizontal: 20, borderWidth: 1.5, backgroundColor: colors.neutral.white },
+  uploadActionBtnSecondaryText:{ fontSize: 14, fontWeight: '600' },
+
+  uploadedFileCard:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.neutral.offWhite, borderWidth: 1.5, borderRadius: 10, padding: 16 },
+  fileInfo:          { flexDirection: 'row', alignItems: 'center', flex: 1 },
   fileIconContainer: { width: 48, height: 48, borderRadius: 10, backgroundColor: colors.neutral.white, justifyContent: 'center', alignItems: 'center', marginRight: 16, borderWidth: 1, borderColor: colors.neutral.gray200 },
-  fileDetails: { flex: 1 },
-  fileHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-  fileName: { fontSize: 14, fontWeight: '600', color: colors.neutral.gray900, flex: 1, marginRight: 8 },
-  fileStatusBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.status.success + '15', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 },
-  fileStatusText: { fontSize: 10, fontWeight: '600', color: colors.status.success },
-  fileMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  fileSize: { fontSize: 12, color: colors.neutral.gray600 },
-  fileTypeIndicator: { backgroundColor: colors.neutral.gray200, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 },
-  fileTypeText: { fontSize: 10, fontWeight: '600', color: colors.neutral.gray700 },
-  removeButton: { padding: 4 },
-  progressSection: { marginTop: 24, marginBottom: 20 },
-  progressBar: { height: 6, backgroundColor: colors.neutral.gray200, borderRadius: 3, marginBottom: 8, overflow: 'hidden', flexDirection: 'row' },
-  progressFill: { height: '100%', backgroundColor: colors.atb.red, borderRadius: 3 },
-  progressLabels: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  progressLabel: { fontSize: 13, color: colors.neutral.gray700, fontWeight: '600' },
-  progressCount: { fontSize: 12, color: colors.neutral.gray500, fontWeight: '500' },
-  alternativeOption: { flexDirection: 'row', alignItems: 'center', padding: 16, borderWidth: 1, borderColor: colors.neutral.gray300, borderRadius: 10, backgroundColor: colors.neutral.white },
-  alternativeIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.neutral.gray100, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  alternativeContent: { flex: 1 },
-  alternativeTitle: { fontSize: 14, fontWeight: '600', color: colors.neutral.gray900, marginBottom: 2 },
-  alternativeSubtitle: { fontSize: 12, color: colors.neutral.gray600, lineHeight: 16 },
-  buttonContainer: { flexDirection: 'row', gap: 12, marginBottom: 32 },
-  backButton: { flex: 1, height: 52, backgroundColor: colors.neutral.white, borderWidth: 1.5, borderColor: colors.neutral.gray300, borderRadius: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  backButtonText: { fontSize: 14, fontWeight: '700', color: colors.neutral.gray700 },
-  continueButton: { flex: 1, borderRadius: 8, overflow: 'hidden', shadowColor: colors.atb.red, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 4 },
+  fileThumb:         { width: 40, height: 40, borderRadius: 6 },
+  fileDetails:       { flex: 1 },
+  fileHeader:        { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  fileName:          { fontSize: 14, fontWeight: '600', color: colors.neutral.gray900, flex: 1, marginRight: 8 },
+  fileStatusBadge:   { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.status.success + '15', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 },
+  fileStatusText:    { fontSize: 10, fontWeight: '600', color: colors.status.success },
+  fileSize:          { fontSize: 12, color: colors.neutral.gray600 },
+  removeButton:      { padding: 4 },
+
+  progressSection: { marginTop: 16, marginBottom: 20 },
+  progressBar:     { height: 6, backgroundColor: colors.neutral.gray200, borderRadius: 3, marginBottom: 8, overflow: 'hidden', flexDirection: 'row' },
+  progressFill:    { height: '100%', backgroundColor: colors.atb.red, borderRadius: 3 },
+  progressLabels:  { flexDirection: 'row', justifyContent: 'space-between' },
+  progressLabel:   { fontSize: 13, color: colors.neutral.gray700, fontWeight: '600' },
+  progressCount:   { fontSize: 12, color: colors.neutral.gray500 },
+
+  alternativeOption:   { flexDirection: 'row', alignItems: 'center', padding: 16, borderWidth: 1, borderColor: colors.neutral.gray300, borderRadius: 10, backgroundColor: colors.neutral.white, marginTop: 12 },
+  alternativeIcon:     { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.neutral.gray100, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  alternativeContent:  { flex: 1 },
+  alternativeTitle:    { fontSize: 14, fontWeight: '600', color: colors.neutral.gray900, marginBottom: 2 },
+  alternativeSubtitle: { fontSize: 12, color: colors.neutral.gray600 },
+
+  buttonContainer:        { flexDirection: 'row', gap: 12, marginBottom: 32 },
+  backButton:             { flex: 1, height: 52, backgroundColor: colors.neutral.white, borderWidth: 1.5, borderColor: colors.neutral.gray300, borderRadius: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  backButtonText:         { fontSize: 14, fontWeight: '700', color: colors.neutral.gray700 },
+  continueButton:         { flex: 1, borderRadius: 8, overflow: 'hidden', shadowColor: colors.atb.red, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 4 },
   continueButtonDisabled: { shadowColor: colors.neutral.gray400 },
-  continueGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 52, paddingHorizontal: 24, gap: 8 },
-  continueButtonText: { fontSize: 14, fontWeight: '700', color: colors.neutral.white },
-  footer: { alignItems: 'center', paddingTop: 20 },
-  footerLegal: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  continueGradient:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 52, paddingHorizontal: 24, gap: 8 },
+  continueButtonText:     { fontSize: 14, fontWeight: '700', color: '#fff' },
+
+  footer:          { alignItems: 'center', paddingTop: 20 },
+  footerLegal:     { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   footerLegalText: { fontSize: 10, color: colors.neutral.gray400, fontWeight: '600', letterSpacing: 0.5 },
-  footerDivider: { fontSize: 10, color: colors.neutral.gray400 },
-  footerText: { fontSize: 11, color: colors.neutral.gray500, fontWeight: '500', marginBottom: 4 },
-  footerSubtext: { fontSize: 10, color: colors.neutral.gray400, fontWeight: '400' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: colors.neutral.white, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 24, paddingBottom: Platform.OS === 'ios' ? 40 : 24, paddingHorizontal: 24 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
-  modalTitle: { fontSize: 20, fontWeight: '700', color: colors.neutral.gray900, flex: 1 },
-  modalBody: { marginBottom: 16 },
-  modalOption: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16 },
-  modalOptionIcon: { width: 56, height: 56, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 16 },
-  modalOptionContent: { flex: 1 },
-  modalOptionTitle: { fontSize: 16, fontWeight: '600', color: colors.neutral.gray900, marginBottom: 4 },
-  modalOptionDescription: { fontSize: 13, color: colors.neutral.gray600, lineHeight: 18 },
-  modalDivider: { height: 1, backgroundColor: colors.neutral.gray200, marginVertical: 8 },
-  modalCancelButton: { height: 52, backgroundColor: colors.neutral.gray100, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
-  modalCancelText: { fontSize: 16, fontWeight: '600', color: colors.neutral.gray700 },
+  footerDivider:   { fontSize: 10, color: colors.neutral.gray400 },
+  footerText:      { fontSize: 11, color: colors.neutral.gray500, marginBottom: 4 },
+  footerSubtext:   { fontSize: 10, color: colors.neutral.gray400 },
 });
 
 export default DocumentsJustificatifsScreen;

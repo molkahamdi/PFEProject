@@ -2,6 +2,7 @@
 //  frontend/screens/PersonalDataForm.tsx — VERSION FINALE
 //  ✅ Création normale | ✅ Modification fromRecap (pré-rempli)
 //  ✅ Style original conservé (sections, dropdowns, calendrier)
+//  ✅ Indicateur de phase horizontal (phase 1 - Données personnelles)
 // ============================================================
 import React, { useState, useEffect } from 'react';
 import {
@@ -83,6 +84,50 @@ const INITIAL_FORM: FormData = {
   agenceDattachement: '', gouvernoratAgence: '', agence: '',
 };
 
+// ── PhaseIndicator HORIZONTAL (identique aux autres écrans) ────
+const PhaseIndicator: React.FC<{ currentPhase: number }> = ({ currentPhase }) => {
+  const phases = [
+    { id: 1, label: 'Données personnelles' },
+    { id: 2, label: 'Documents justificatifs' },
+    { id: 3, label: 'Résumer de la demande' },
+    { id: 4, label: 'Envoi de la demande' },
+    { id: 5, label: 'Signature éléctronique' },
+  ];
+
+  return (
+    <View style={styles.phaseContainer}>
+      {phases.map((phase, index) => (
+        <React.Fragment key={phase.id}>
+          <View style={styles.phaseItem}>
+            <View style={[
+              styles.phaseRadioOuter,
+              phase.id < currentPhase && styles.phaseRadioCompleted,
+              phase.id === currentPhase && styles.phaseRadioActive
+            ]}>
+              {phase.id < currentPhase ? (
+                <Text style={styles.phaseRadioCheck}>✓</Text>
+              ) : (
+                <View style={[
+                  styles.phaseRadioInner,
+                  phase.id === currentPhase && styles.phaseRadioInnerActive
+                ]} />
+              )}
+            </View>
+            <Text style={[
+              styles.phaseLabel,
+              phase.id === currentPhase && styles.phaseLabelActive,
+              phase.id < currentPhase && styles.phaseLabelCompleted
+            ]}>
+              {phase.label}
+            </Text>
+          </View>
+          {index < phases.length - 1 && <View style={styles.phaseConnector} />}
+        </React.Fragment>
+      ))}
+    </View>
+  );
+};
+
 // ── Sous-composants ──────────────────────────────────────────
 const Header: React.FC = () => (
   <View style={styles.header}>
@@ -135,6 +180,9 @@ const Footer: React.FC = () => (
 const PersonalDataForm: React.FC<PersonalDataFormProps> = ({ navigation, route }) => {
   const { customerId } = route.params;
   const fromRecap = route.params?.fromRecap ?? false;
+
+  // Phase actuelle (toujours 1 pour cet écran - Données personnelles)
+  const currentPhase = 1;
 
   const [isLoading, setIsLoading]   = useState(false);
   const [isFetching, setIsFetching] = useState(false);
@@ -379,10 +427,18 @@ const PersonalDataForm: React.FC<PersonalDataFormProps> = ({ navigation, route }
         <ScrollView style={styles.flex} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           <View style={styles.content}>
 
-            {/* Titre */}
+            {/* ── Titre ── */}
             <View style={styles.titleSection}>
+              {/* pageNumber SUPPRIMÉ */}
               <Text style={styles.title}>{fromRecap ? "Modifier l'adresse & profession" : 'Données personnelles'}</Text>
               <Text style={styles.subtitle}>Complétez vos informations personnelles et choisissez votre agence</Text>
+              
+              {/* progressContainer SUPPRIMÉ */}
+
+              {/* Indicateur de phase horizontal */}
+              <View style={styles.phaseIndicatorWrapper}>
+                <PhaseIndicator currentPhase={currentPhase} />
+              </View>
             </View>
 
             {/* Bannière modification */}
@@ -574,9 +630,27 @@ const styles = StyleSheet.create({
   bankSubtitle: { fontSize: 11, color: colors.neutral.gray500, marginTop: 2 },
   digipackBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 4 },
   digipackText: { fontSize: 10, fontWeight: '800', color: colors.neutral.white, letterSpacing: 2 },
-  titleSection: { marginBottom: 24 },
+
+  // Styles pour PhaseIndicator
+  phaseIndicatorWrapper: { marginTop: 2 },
+  phaseContainer: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingVertical: 8 },
+  phaseItem: { alignItems: 'center', flex: 1 },
+  phaseRadioOuter: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: colors.neutral.gray400, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
+  phaseRadioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: 'transparent' },
+  phaseRadioInnerActive: { backgroundColor: colors.atb.red },
+  phaseRadioActive: { borderColor: colors.atb.red },
+  phaseRadioCompleted: { borderColor: colors.atb.red, backgroundColor: colors.atb.red },
+  phaseRadioCheck: { fontSize: 12, color: colors.neutral.white, fontWeight: 'bold' },
+  phaseLabel: { fontSize: 10, color: colors.neutral.gray600, fontWeight: '500', textAlign: 'center' },
+  phaseLabelActive: { color: colors.atb.red, fontWeight: '700' },
+  phaseLabelCompleted: { color: colors.neutral.gray800, fontWeight: '600' },
+  phaseConnector: { width: 20, height: 2, backgroundColor: colors.neutral.gray300, alignSelf: 'center', marginTop: -10 },
+  titleSection: { marginBottom: 12 },
+  // pageNumber SUPPRIMÉ
   title: { fontSize: 24, fontWeight: '700', color: colors.neutral.gray900, marginBottom: 4 },
-  subtitle: { fontSize: 14, color: colors.neutral.gray600, lineHeight: 20 },
+  subtitle: { fontSize: 14, color: colors.neutral.gray600, lineHeight: 20, marginBottom: 10 },
+  
+
   editBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(200,35,51,0.07)', borderWidth: 1, borderColor: 'rgba(200,35,51,0.2)', borderRadius: 10, padding: 14, marginBottom: 16 },
   editBannerIcon: { fontSize: 18 },
   editBannerText: { flex: 1, fontSize: 13, color: colors.atb.red, fontWeight: '500' },
@@ -587,10 +661,10 @@ const styles = StyleSheet.create({
   sectionTitleWrapper: { flex: 1 },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: colors.neutral.gray900, marginBottom: 2 },
   sectionDescription: { fontSize: 12, color: colors.neutral.gray500 },
-  formGrid: { gap: 16 },
+  formGrid: { gap: 10 },
   fieldGroup: { flex: 1 },
   fullWidth: { flexBasis: '100%' },
-  fieldHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 6 },
+  fieldHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 4, gap: 6 },
   fieldLabel: { fontSize: 13, fontWeight: '600', color: colors.neutral.gray700 },
   optionalLabel: { color: colors.neutral.gray500 },
   requiredIndicator: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.atb.red, marginLeft: 2 },

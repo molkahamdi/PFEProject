@@ -1,67 +1,90 @@
 // ============================================================
 //  frontend/screens/OtpVerificationScreen.tsx
-//  VÉRIFICATION OTP — VERSION FINALE PROFESSIONNELLE
+//  ✅ mode 'sms'   → OTP local affiché en popup Alert
+//  ✅ mode 'email' → vrai email envoyé via Resend (page neuve)
+//  ✅ OTP reset à '' à chaque changement de page
+//  ✅ Email envoyé automatiquement au montage de la page email
+//  ✅ Info box rouge
 // ============================================================
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  Dimensions,
-  Image,
-  StatusBar,
-  ActivityIndicator,
+  View, Text, ScrollView, TouchableOpacity, Alert,
+  StyleSheet, KeyboardAvoidingView, Platform,
+  Dimensions, Image, StatusBar, ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView }   from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
-import OtpInput from '../components/common/OtpInput';
-import colors from '../../constants/colors';
+import { Ionicons }       from '@expo/vector-icons';
+import OtpInput           from '../components/common/OtpInput';
+import colors             from '../../constants/colors';
 import { NavigationProp, RouteProp } from '../types/navigation';
-import { requestOtp, verifyOtp } from '../services/customerApi';
-
-// ============================================================
-//  TYPES & CONSTANTES
-// ============================================================
+import {
+  requestOtp, verifyOtp,
+  requestEmailOtp, verifyEmailOtp,
+} from '../services/customerApi';
 
 type Props = {
   navigation: NavigationProp<'OtpVerification'>;
-  route: RouteProp<'OtpVerification'>;
+  route:      RouteProp<'OtpVerification'>;
 };
 
 const { width } = Dimensions.get('window');
-const isSmallScreen = width < 375;
-const s = (normal: number, small: number) => (isSmallScreen ? small : normal);
+const isSmall   = width < 375;
+const s         = (n: number, sm: number) => (isSmall ? sm : n);
 
-// ============================================================
-//  SOUS-COMPOSANTS
-// ============================================================
-
+// ── Header ────────────────────────────────────────────────────
 const Header: React.FC = () => (
   <View style={styles.header}>
     <View style={styles.headerLeft}>
-      <View style={styles.logoContainer}>
-        <LinearGradient colors={[colors.atb.red, colors.atb.red]} style={styles.logoGradient}>
-          <Image source={require('../assets/atb.png')} style={styles.logo} resizeMode="contain" />
-        </LinearGradient>
-      </View>
+      <LinearGradient colors={[colors.atb.red, '#C41E3A']} style={styles.logoGradient}>
+        <Image source={require('../assets/atb.png')} style={styles.logo} resizeMode="contain" />
+      </LinearGradient>
       <View>
         <Text style={styles.bankName}>Arab Tunisian Bank</Text>
         <Text style={styles.bankSubtitle}>البنك العربي التونسي</Text>
       </View>
     </View>
-    <LinearGradient colors={[colors.atb.red, colors.atb.red]} style={styles.digipackBadge}>
+    <LinearGradient colors={[colors.atb.red, '#C41E3A']} style={styles.digipackBadge}>
       <Text style={styles.digipackText}>DIGIPACK</Text>
     </LinearGradient>
   </View>
 );
 
+// ── PhaseIndicator ────────────────────────────────────────────
+const PhaseIndicator: React.FC = () => {
+  const phases = [
+    'Données personnelles',
+    'Documents justificatifs',
+    'Résumé de la demande',
+    'Envoi de la demande',
+    'Signature électronique',
+  ];
+  return (
+    <View style={styles.phaseContainer}>
+      {phases.map((label, index) => (
+        <React.Fragment key={index}>
+          <View style={styles.phaseItem}>
+            <View style={[
+              styles.phaseRadioOuter,
+              index === 0 && styles.phaseRadioActive,
+            ]}>
+              <View style={[
+                styles.phaseRadioInner,
+                index === 0 && styles.phaseRadioInnerActive,
+              ]} />
+            </View>
+            <Text style={[styles.phaseLabel, index === 0 && styles.phaseLabelActive]}>
+              {label}
+            </Text>
+          </View>
+          {index < phases.length - 1 && <View style={styles.phaseConnector} />}
+        </React.Fragment>
+      ))}
+    </View>
+  );
+};
+
+// ── Footer ────────────────────────────────────────────────────
 const Footer: React.FC = () => (
   <View style={styles.footer}>
     <View style={styles.footerDivider} />
@@ -70,123 +93,190 @@ const Footer: React.FC = () => (
   </View>
 );
 
-// ============================================================
-//  COMPOSANT PRINCIPAL
-// ============================================================
-
+// ── Écran principal ───────────────────────────────────────────
 const OtpVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
   const { customerId } = route.params;
+  const mode           = (route.params as any)?.mode ?? 'sms';
+  const formData       = route.params?.formData;
+  const firstName      = formData?.firstName ?? '';
+  const isSms          = mode === 'sms';
 
-  const [otp, setOtp]             = useState('');
-  const [timer, setTimer]         = useState(30);
+  // ✅ OTP commence toujours vide — jamais partagé entre pages
+  const [otp,       setOtp]       = useState('');
+  const [timer,     setTimer]     = useState(30);
   const [canResend, setCanResend] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(true);
+  const [codeSent,  setCodeSent]  = useState(false);
 
-  // ── Minuterie ─────────────────────────────────────────────
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const config = {
+    title:       isSms
+      ? 'Vérification du numéro de téléphone'
+      : "Vérification de l'adresse Email",
+    subtitle:    isSms
+      ? 'Saisissez le code reçu par SMS sur votre téléphone.'
+      : 'Saisissez le code envoyé à votre adresse email.',
+    sectionDesc: isSms
+      ? 'Code affiché dans la fenêtre pop-up'
+      : 'Consultez votre boîte de réception',
+    resendLabel: isSms ? 'Générer un nouveau code' : "Renvoyer l'email",
+    actionLabel: isSms ? 'Continuer' : 'Valider',
+  };
+
+  // ── Timer ────────────────────────────────────────────────
   const startTimer = () => {
     setTimer(30);
     setCanResend(false);
-
-    const interval = setInterval(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
       setTimer(prev => {
-        if (prev <= 1) {
-          clearInterval(interval);
-          setCanResend(true);
-          return 0;
-        }
+        if (prev <= 1) { clearInterval(timerRef.current!); setCanResend(true); return 0; }
         return prev - 1;
       });
     }, 1000);
-
-    return interval;
   };
 
-  // ── Envoi OTP ─────────────────────────────────────────────
-  const sendOtp = async (isResend = false) => {
-    setIsSending(true);
-    try {
-      await requestOtp(customerId);
+  useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
 
-      if (isResend) {
-        Alert.alert(
-          '✅ Code renvoyé',
-          'Un nouveau code de vérification a été envoyé par SMS.'
-        );
-      }
-    } catch (error: any) {
+  // ── Envoi SMS ────────────────────────────────────────────
+  const sendSmsOtp = async (isResend = false) => {
+    setIsSending(true);
+    setCodeSent(false);
+    try {
+      const res  = await requestOtp(customerId);
+      const code = res.devOnly_otp ?? '------';
+      setCodeSent(true);
       Alert.alert(
-        'Erreur',
-        "Impossible d'envoyer le code SMS. Vérifiez votre connexion et réessayez."
+        isResend ? '🔄 Nouveau code généré' : '🔐 Code de vérification',
+        `Votre code OTP est :\n\n${code}\n\nValide 10 minutes.`,
+        [{ text: "OK, j'ai compris" }],
+        { cancelable: false },
       );
+    } catch {
+      Alert.alert('Erreur', 'Impossible de générer le code. Réessayez.');
     } finally {
       setIsSending(false);
     }
   };
 
-  // ── Effet initial ─────────────────────────────────────────
-  useEffect(() => {
-    sendOtp(false);
-    const interval = startTimer();
-    return () => clearInterval(interval);
-  }, [customerId]);
+  // ── Envoi Email ──────────────────────────────────────────
+  // ✅ Appelé automatiquement au montage de la page email
+  const sendEmailOtp = async (isResend = false) => {
+    setIsSending(true);
+    setCodeSent(false);
+    try {
+      await requestEmailOtp(customerId, firstName);
+      setCodeSent(true);
+      if (isResend) {
+        Alert.alert(
+          '📧 Email renvoyé',
+          'Un nouveau code a été envoyé.\nVérifiez votre boîte de réception.',
+          [{ text: 'OK' }],
+        );
+      }
+    } catch (error: any) {
+      Alert.alert('Erreur', error.message || "Impossible d'envoyer l'email.");
+    } finally {
+      setIsSending(false);
+    }
+  };
 
-  // ── Renvoi du code ────────────────────────────────────────
-  const handleResendCode = async () => {
+  // ── Init au montage ──────────────────────────────────────
+  // ✅ Chaque page est indépendante — OTP vide, envoi automatique
+ useEffect(() => {
+  setOtp('');
+  if (isSms) {
+    sendSmsOtp(false);
+    startTimer();
+  } else {
+    // ✅ Email déjà envoyé depuis handleContinue SMS
+    // On affiche juste "envoyé" sans renvoyer
+    setIsSending(false);
+    setCodeSent(true);
+    startTimer();
+  }
+}, []);
+  // ── Renvoyer ─────────────────────────────────────────────
+  const handleResend = async () => {
     setOtp('');
-    await sendOtp(true);
+    if (isSms) await sendSmsOtp(true);
+    else        await sendEmailOtp(true);
     startTimer();
   };
 
-  // ── Vérification OTP ──────────────────────────────────────
-  const handleContinue = async () => {
-    if (otp.length !== 6) {
-      Alert.alert('Erreur', 'Veuillez entrer le code complet à 6 chiffres.');
-      return;
-    }
-
-    setIsLoading(true);
-    try {
+  // ── Continuer / Valider ──────────────────────────────────
+ const handleContinue = async () => {
+  if (otp.length !== 6) {
+    Alert.alert('Erreur', 'Veuillez entrer les 6 chiffres du code.');
+    return;
+  }
+  setIsLoading(true);
+  try {
+    if (isSms) {
       await verifyOtp(customerId, otp);
+      // ✅ Envoyer l'email ICI avant de naviguer — garanti !
+      await requestEmailOtp(customerId, firstName);
       // @ts-ignore
-      navigation.navigate('FATCA', { customerId });
-    } catch (error: any) {
-      Alert.alert(
-        'Code invalide',
-        error.message || 'Le code saisi est incorrect. Veuillez réessayer.'
-      );
-      setOtp('');
-    } finally {
-      setIsLoading(false);
+      navigation.navigate('OtpVerification', { customerId, formData, mode: 'email' });
+    } else {
+      await verifyEmailOtp(customerId, otp);
+      // @ts-ignore
+      navigation.navigate('FATCA', { customerId, formData });
     }
-  };
+  } catch (error: any) {
+    Alert.alert(
+      isSms ? '❌ Code SMS invalide' : '❌ Code Email invalide',
+      error.message || 'Le code saisi est incorrect. Réessayez.',
+    );
+    setOtp('');
+  } finally {
+    setIsLoading(false);
+  }
+};
 
-  // ── Quitter ───────────────────────────────────────────────
+  // ── Quitter ──────────────────────────────────────────────
   const handleQuit = () => {
     Alert.alert(
       'Quitter',
       'Êtes-vous sûr de vouloir quitter le processus ?',
       [
         { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Quitter',
-          style: 'destructive',
-          onPress: () => {
-            // @ts-ignore
-            navigation.navigate('EligibilityConditions');
-          },
-        },
-      ]
+        { text: 'Quitter', style: 'destructive', onPress: () => {
+          // @ts-ignore
+          navigation.navigate('EligibilityConditions');
+        }},
+      ],
     );
   };
 
-  // ============================================================
-  //  RENDU
-  // ============================================================
+  // ── Retour ───────────────────────────────────────────────
+  const handleBack = () => {
+    if (isSms) {
+      // @ts-ignore
+      navigation.navigate('OnboardingPersonalData', {
+        customerId,
+        prefillData: {
+          lastName:        formData?.lastNameLatin   ?? '',
+          firstName:       formData?.firstNameLatin  ?? '',
+          lastNameArabic:  formData?.lastName        ?? '',
+          firstNameArabic: formData?.firstName       ?? '',
+          idCardNumber:    formData?.idCardNumber    ?? '',
+          birthDate:       formData?.birthDate       ?? '',
+          email:           formData?.email           ?? '',
+        },
+      });
+    } else {
+      // @ts-ignore
+      navigation.navigate('OtpVerification', { customerId, formData, mode: 'sms' });
+    }
+  };
+
+  // ── Rendu ─────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.neutral.gray100} />
-
       <Header />
 
       <KeyboardAvoidingView
@@ -202,133 +292,153 @@ const OtpVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
         >
           <View style={styles.content}>
 
-            {/* ── TITRE ── */}
+            {/* ── Titre ── */}
             <View style={styles.titleSection}>
-              <Text style={styles.pageNumber}>ÉTAPE 02/05</Text>
-              <Text style={styles.title}>Vérification du numéro</Text>
-              <Text style={styles.subtitle}>
-                Un code à 6 chiffres a été envoyé par SMS au numéro que vous avez saisi
-              </Text>
-              <View style={styles.progressContainer}>
-                <View style={styles.progressBarBackground}>
-                  <LinearGradient
-                    colors={[colors.atb.red, colors.atb.red]}
-                    style={[styles.progressBarFill, { width: '40%' }]}
-                  />
-                </View>
-                <Text style={styles.progressText}>40%</Text>
+              <Text style={styles.title}>{config.title}</Text>
+              <Text style={styles.subtitle}>{config.subtitle}</Text>
+              <View style={{ marginTop: 10 }}>
+                <PhaseIndicator />
               </View>
             </View>
 
-            {/* ── CARTE OTP ── */}
+            {/* ── Carte OTP ── */}
             <View style={styles.card}>
+
+              {/* En-tête section */}
               <View style={styles.sectionHeader}>
-                <LinearGradient
-                  colors={[colors.atb.red, colors.atb.red]}
-                  style={styles.sectionBadge}
-                >
-                  <Text style={styles.sectionBadgeText}>2</Text>
+                <LinearGradient colors={[colors.atb.red, '#C41E3A']} style={styles.sectionBadge}>
+                  <Text style={styles.sectionBadgeText}>{isSms ? '1' : '2'}</Text>
                 </LinearGradient>
-                <View>
+                <View style={{ flex: 1 }}>
                   <Text style={styles.sectionTitle}>Code de vérification</Text>
-                  <Text style={styles.sectionDesc}>Saisissez le code reçu par SMS</Text>
+                  <Text style={styles.sectionDesc}>{config.sectionDesc}</Text>
                 </View>
               </View>
 
-              {/* Indicateur d'envoi */}
-              {isSending ? (
-                <View style={styles.sendingContainer}>
-                  <ActivityIndicator color={colors.atb.red} size="small" />
-                  <Text style={styles.sendingText}>Envoi du code en cours...</Text>
-                </View>
-              ) : (
-                <View style={styles.sentContainer}>
-                  <Ionicons name="checkmark-circle" size={18} color="#22c55e" />
-                  <Text style={styles.sentText}>Code envoyé par SMS avec succès</Text>
+              {/* Statut envoi */}
+              <View style={styles.statusRow}>
+                {isSending ? (
+                  <>
+                    <ActivityIndicator color={colors.neutral.gray400} size="small" />
+                    <Text style={styles.statusText}>
+                      {isSms ? 'Génération du code...' : "Envoi de l'email en cours..."}
+                    </Text>
+                  </>
+                ) : codeSent ? (
+                  <>
+                    <Ionicons name="checkmark-circle-outline" size={16} color="#16a34a" />
+                    <Text style={[styles.statusText, { color: '#16a34a' }]}>
+                      {isSms ? 'Code généré avec succès' : 'Email envoyé avec succès'}
+                    </Text>
+                  </>
+                ) : null}
+              </View>
+
+              {/* Hint email uniquement */}
+              {!isSms && codeSent && (
+                <View style={styles.hintBox}>
+                  <Ionicons name="information-circle-outline" size={15} color={colors.neutral.gray500} />
+                  <Text style={styles.hintText}>
+                    Vérifiez votre boîte de réception et vos spams.
+                  </Text>
                 </View>
               )}
 
               {/* Saisie OTP */}
-              <View style={styles.otpContainer}>
-                <OtpInput
-                  length={6}
-                  onChangeOtp={setOtp}
-                  onComplete={(code: string) => setOtp(code)}
-                />
-              </View>
+<View style={styles.otpWrapper}>
+  <OtpInput
+    key={mode}              // ✅ reset du composant à chaque changement de mode
+    length={6}
+    onChangeOtp={setOtp}
+    onComplete={(code: string) => setOtp(code)}
+  />
+</View>
 
-              {/* Renvoyer / Minuterie */}
-              <View style={styles.resendContainer}>
+              {/* Revoir le code — SMS uniquement */}
+              {isSms && (
+                <TouchableOpacity
+                  style={styles.showCodeBtn}
+                  onPress={() => sendSmsOtp(false)}
+                  disabled={isSending}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="eye-outline" size={15} color={colors.atb.red} />
+                  <Text style={styles.showCodeText}>Revoir le code</Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Timer / Renvoyer */}
+              <View style={styles.resendRow}>
                 {canResend ? (
                   <TouchableOpacity
-                    onPress={handleResendCode}
-                    style={styles.resendButton}
-                    activeOpacity={0.7}
+                    onPress={handleResend}
+                    style={styles.resendBtn}
                     disabled={isSending}
+                    activeOpacity={0.7}
                   >
-                    <Ionicons name="refresh" size={16} color={colors.atb.red} />
-                    <Text style={styles.resendButtonText}>Renvoyer le code</Text>
+                    <Ionicons name="refresh" size={15} color={colors.atb.red} />
+                    <Text style={styles.resendText}>{config.resendLabel}</Text>
                   </TouchableOpacity>
                 ) : (
-                  <View style={styles.timerContainer}>
-                    <Ionicons name="time-outline" size={16} color={colors.neutral.gray500} />
-                    <Text style={styles.timerText}>Renvoyer dans {timer}s</Text>
+                  <View style={styles.timerRow}>
+                    <Ionicons name="time-outline" size={15} color={colors.neutral.gray400} />
+                    <Text style={styles.timerText}>Nouveau code dans {timer}s</Text>
                   </View>
                 )}
               </View>
 
-              {/* Info box */}
+              {/* ✅ Info box — rouge */}
               <View style={styles.infoBox}>
-                <Ionicons name="information-circle" size={20} color={colors.atb.red} />
-                <View style={styles.infoContent}>
+                <Ionicons name="shield-checkmark-outline" size={18} color={colors.atb.red} />
+                <View style={{ flex: 1 }}>
                   <Text style={styles.infoTitle}>Informations importantes</Text>
-                  <Text style={styles.infoItem}>• Le code expire dans 10 minutes</Text>
-                  <Text style={styles.infoItem}>• Vous avez droit à 3 tentatives</Text>
-                  <Text style={styles.infoItem}>• Code composé uniquement de chiffres</Text>
+                  <Text style={styles.infoItem}>• Code valide pendant 10 minutes</Text>
+                  <Text style={styles.infoItem}>• 3 tentatives autorisées</Text>
+                  <Text style={styles.infoItem}>• Ne partagez jamais ce code</Text>
                 </View>
               </View>
+
             </View>
 
-            {/* ── BOUTONS ── */}
-            <View style={styles.buttonContainer}>
+            {/* ── Boutons ── */}
+            <View style={styles.btnRow}>
               <TouchableOpacity
                 onPress={handleQuit}
-                style={[styles.button, styles.quitButton]}
+                style={[styles.btn, styles.quitBtn]}
                 activeOpacity={0.7}
               >
-                <Text style={styles.quitButtonText}>Quitter</Text>
+                <Text style={styles.quitBtnText}>Quitter</Text>
               </TouchableOpacity>
 
-              <View style={styles.rightButtonsContainer}>
+              <View style={styles.rightBtns}>
                 <TouchableOpacity
-                  onPress={() => navigation.goBack()}
-                  style={[styles.button, styles.backButton]}
+                  onPress={handleBack}
+                  style={[styles.btn, styles.backBtn]}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.backButtonText}>Retour</Text>
+                  <Text style={styles.backBtnText}>Retour</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   onPress={handleContinue}
                   style={[
-                    styles.continueButton,
-                    (otp.length !== 6 || isLoading) && { opacity: 0.6 },
+                    styles.continueBtn,
+                    (otp.length !== 6 || isLoading) && { opacity: 0.5 },
                   ]}
                   disabled={otp.length !== 6 || isLoading}
                   activeOpacity={0.8}
                 >
                   <LinearGradient
-                    colors={[colors.atb.red, colors.atb.red]}
+                    colors={[colors.atb.red, '#C41E3A']}
                     style={styles.continueGradient}
                   >
-                    {isLoading ? (
-                      <ActivityIndicator color={colors.neutral.white} />
-                    ) : (
-                      <>
-                        <Text style={styles.continueButtonText}>Continuer</Text>
-                        <View style={styles.arrowRight} />
-                      </>
-                    )}
+                    {isLoading
+                      ? <ActivityIndicator color="#fff" />
+                      : <>
+                          <Text style={styles.continueBtnText}>{config.actionLabel}</Text>
+                          <View style={styles.arrowRight} />
+                        </>
+                    }
                   </LinearGradient>
                 </TouchableOpacity>
               </View>
@@ -342,210 +452,82 @@ const OtpVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
   );
 };
 
-// ============================================================
-//  STYLES
-// ============================================================
-
+// ── Styles ────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.neutral.white },
-  flex: { flex: 1 },
+  safeArea:      { flex: 1, backgroundColor: colors.neutral.white },
+  flex:          { flex: 1 },
   scrollContent: { flexGrow: 1 },
-  content: { padding: s(24, 16) },
+  content:       { padding: s(24, 16) },
 
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: s(24, 16),
-    paddingVertical: s(16, 12),
-    borderBottomWidth: 1,
-    borderBottomColor: colors.neutral.gray300,
-    backgroundColor: colors.neutral.gray100,
-  },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: s(12, 8) },
-  logoContainer: {
-    shadowColor: colors.atb.red,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  logo: { width: s(40, 36), height: s(40, 36) },
-  logoGradient: {
-    width: s(44, 40),
-    height: s(44, 40),
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  bankName: { fontSize: s(16, 14), fontWeight: '700', color: colors.atb.red },
-  bankSubtitle: { fontSize: s(11, 9), color: colors.neutral.gray500, marginTop: 2 },
-  digipackBadge: { paddingHorizontal: s(10, 8), paddingVertical: s(4, 3), borderRadius: 4 },
-  digipackText: { fontSize: s(10, 9), fontWeight: '800', color: colors.neutral.white, letterSpacing: 2 },
+  header:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: s(24, 16), paddingVertical: s(16, 12), borderBottomWidth: 1, borderBottomColor: colors.neutral.gray300, backgroundColor: colors.neutral.gray100 },
+  headerLeft:   { flexDirection: 'row', alignItems: 'center', gap: s(12, 8) },
+  logo:         { width: s(38, 34), height: s(38, 34) },
+  logoGradient: { width: s(42, 38), height: s(42, 38), borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  bankName:     { fontSize: s(15, 13), fontWeight: '700', color: colors.atb.red },
+  bankSubtitle: { fontSize: s(10, 9), color: colors.neutral.gray500, marginTop: 1 },
+  digipackBadge:{ paddingHorizontal: s(10, 8), paddingVertical: s(4, 3), borderRadius: 4 },
+  digipackText: { fontSize: s(10, 9), fontWeight: '800', color: '#fff', letterSpacing: 2 },
 
-  titleSection: { marginBottom: s(24, 20) },
-  pageNumber: { fontSize: 11, fontWeight: '800', color: colors.atb.red, letterSpacing: 1.5, marginBottom: 6 },
-  title: { fontSize: s(24, 20), fontWeight: '700', color: colors.neutral.gray900, marginBottom: 4 },
-  subtitle: { fontSize: s(13, 12), color: colors.neutral.gray600, lineHeight: 19, marginBottom: 16 },
-  progressContainer: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  progressBarBackground: { flex: 1, height: 4, backgroundColor: colors.neutral.gray200, borderRadius: 2, overflow: 'hidden' },
-  progressBarFill: { height: '100%', borderRadius: 2 },
-  progressText: { fontSize: 12, fontWeight: '800', color: colors.atb.red },
+  phaseContainer:        { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingVertical: 6 },
+  phaseItem:             { alignItems: 'center', flex: 1 },
+  phaseRadioOuter:       { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: colors.neutral.gray300, alignItems: 'center', justifyContent: 'center', marginBottom: 5 },
+  phaseRadioInner:       { width: 8, height: 8, borderRadius: 4, backgroundColor: 'transparent' },
+  phaseRadioInnerActive: { backgroundColor: colors.atb.red },
+  phaseRadioActive:      { borderColor: colors.atb.red },
+  phaseLabel:            { fontSize: 9, color: colors.neutral.gray400, fontWeight: '500', textAlign: 'center' },
+  phaseLabelActive:      { color: colors.atb.red, fontWeight: '700' },
+  phaseConnector:        { width: 16, height: 1.5, backgroundColor: colors.neutral.gray200, alignSelf: 'center', marginTop: -9 },
 
-  card: {
-    backgroundColor: colors.neutral.white,
-    borderRadius: 12,
-    marginBottom: 20,
-    padding: s(20, 16),
-    shadowColor: colors.neutral.gray900,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
-    borderWidth: 1,
-    borderColor: colors.neutral.beige,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 20,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.neutral.beige,
-  },
-  sectionBadge: { width: 30, height: 30, borderRadius: 6, justifyContent: 'center', alignItems: 'center' },
-  sectionBadgeText: { fontSize: 13, fontWeight: '800', color: colors.neutral.white },
-  sectionTitle: { fontSize: s(16, 14), fontWeight: '700', color: colors.neutral.gray900 },
-  sectionDesc: { fontSize: 12, color: colors.neutral.gray500, marginTop: 2 },
+  titleSection: { marginBottom: s(20, 16) },
+  title:        { fontSize: s(21, 17), fontWeight: '700', color: colors.neutral.gray900, marginBottom: 4 },
+  subtitle:     { fontSize: s(13, 12), color: colors.neutral.gray500, lineHeight: 19 },
 
-  sendingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: colors.neutral.offWhite,
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 20,
-  },
-  sendingText: { fontSize: 13, color: colors.neutral.gray600, fontWeight: '500' },
-  sentContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(34,197,94,0.08)',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(34,197,94,0.2)',
-  },
-  sentText: { fontSize: 13, color: '#16a34a', fontWeight: '600' },
+  card: { backgroundColor: '#fff', borderRadius: 12, marginBottom: 20, padding: s(20, 16), shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2, borderWidth: 1, borderColor: colors.neutral.gray200 },
 
-  otpContainer: {
-    paddingVertical: s(20, 15),
-    paddingHorizontal: s(10, 5),
-    backgroundColor: colors.neutral.white,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.neutral.beige,
-    marginBottom: 16,
-    alignItems: 'center',
-  },
+  sectionHeader:    { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 18, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: colors.neutral.gray100 },
+  sectionBadge:     { width: 28, height: 28, borderRadius: 6, justifyContent: 'center', alignItems: 'center' },
+  sectionBadgeText: { fontSize: 13, fontWeight: '800', color: '#fff' },
+  sectionTitle:     { fontSize: s(15, 13), fontWeight: '700', color: colors.neutral.gray900 },
+  sectionDesc:      { fontSize: 11, color: colors.neutral.gray400, marginTop: 2 },
 
-  resendContainer: { alignItems: 'center', marginBottom: 20 },
-  resendButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1.5,
-    borderColor: colors.atb.red,
-    backgroundColor: colors.neutral.white,
-  },
-  resendButtonText: { fontSize: s(14, 13), fontWeight: '600', color: colors.atb.red },
-  timerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.neutral.gray300,
-  },
-  timerText: { fontSize: s(14, 13), color: colors.neutral.gray500 },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16, minHeight: 22 },
+  statusText: { fontSize: 12, color: colors.neutral.gray400, fontWeight: '500' },
 
-  infoBox: {
-    flexDirection: 'row',
-    gap: 10,
-    padding: 14,
-    backgroundColor: 'rgba(200,35,51,0.05)',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(200,35,51,0.15)',
-    alignItems: 'flex-start',
-  },
-  infoContent: { flex: 1 },
-  infoTitle: { fontSize: s(13, 12), fontWeight: '700', color: colors.atb.red, marginBottom: 6 },
-  infoItem: { fontSize: s(12, 11), color: colors.atb.red, lineHeight: 20 },
+  hintBox:  { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 14 },
+  hintText: { fontSize: 12, color: colors.neutral.gray400, flex: 1, lineHeight: 17 },
 
-  buttonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: s(32, 24),
-    gap: 10,
-  },
-  rightButtonsContainer: { flexDirection: 'row', gap: s(10, 8), flex: 1, justifyContent: 'flex-end' },
-  button: {
-    height: s(52, 48),
-    backgroundColor: colors.neutral.white,
-    borderWidth: 1.5,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    minWidth: s(90, 80),
-  },
-  quitButton: { borderColor: colors.atb.red },
-  backButton: { borderColor: colors.neutral.gray300 },
-  quitButtonText: { fontSize: s(14, 13), fontWeight: '700', color: colors.atb.red },
-  backButtonText: { fontSize: s(14, 13), fontWeight: '700', color: colors.neutral.gray700 },
-  continueButton: {
-    borderRadius: 10,
-    overflow: 'hidden',
-    shadowColor: colors.atb.red,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 4,
-    minWidth: s(120, 100),
-  },
-  continueGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: s(52, 48),
-    paddingHorizontal: s(20, 16),
-    gap: 8,
-  },
-  continueButtonText: { fontSize: s(14, 13), fontWeight: '700', color: colors.neutral.white },
-  arrowRight: {
-    width: 7,
-    height: 7,
-    borderRightWidth: 2,
-    borderTopWidth: 2,
-    borderColor: colors.neutral.white,
-    transform: [{ rotate: '45deg' }],
-  },
+  otpWrapper:  { paddingVertical: s(18, 14), paddingHorizontal: s(8, 4), backgroundColor: colors.neutral.gray100, borderRadius: 10, marginBottom: 14, alignItems: 'center' },
 
-  footer: { alignItems: 'center', paddingTop: s(20, 16), paddingBottom: 8 },
-  footerDivider: { width: 50, height: 2, backgroundColor: colors.neutral.gray300, borderRadius: 1, marginBottom: 8 },
-  footerText: { fontSize: s(11, 10), color: colors.neutral.gray500, marginBottom: 4, textAlign: 'center' },
-  footerSubtext: { fontSize: s(10, 9), color: colors.neutral.gray400, textAlign: 'center' },
+  showCodeBtn:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 9, marginBottom: 14, borderRadius: 8, borderWidth: 1, borderColor: colors.neutral.gray200 },
+  showCodeText: { fontSize: 12, color: colors.atb.red, fontWeight: '600' },
+
+  resendRow: { alignItems: 'center', marginBottom: 18 },
+  resendBtn:  { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 9, paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderColor: colors.atb.red },
+  resendText: { fontSize: s(13, 12), fontWeight: '600', color: colors.atb.red },
+  timerRow:   { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  timerText:  { fontSize: s(13, 12), color: colors.neutral.gray400 },
+
+  // ✅ Info box rouge
+  infoBox:   { flexDirection: 'row', gap: 10, padding: 14, backgroundColor: 'rgba(200,35,51,0.05)', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(200,35,51,0.15)', alignItems: 'flex-start' },
+  infoTitle: { fontSize: s(12, 11), fontWeight: '700', color: colors.atb.red, marginBottom: 5 },
+  infoItem:  { fontSize: s(11, 10), color: colors.atb.red, lineHeight: 19 },
+
+  btnRow:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: s(32, 24), gap: 10 },
+  rightBtns:  { flexDirection: 'row', gap: s(10, 8), flex: 1, justifyContent: 'flex-end' },
+  btn:        { height: s(50, 46), backgroundColor: '#fff', borderWidth: 1.5, borderRadius: 10, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, minWidth: s(85, 75) },
+  quitBtn:    { borderColor: colors.neutral.gray300 },
+  backBtn:    { borderColor: colors.neutral.gray300 },
+  quitBtnText:{ fontSize: s(13, 12), fontWeight: '600', color: colors.neutral.gray600 },
+  backBtnText:{ fontSize: s(13, 12), fontWeight: '600', color: colors.neutral.gray600 },
+  continueBtn:     { borderRadius: 10, overflow: 'hidden', shadowColor: colors.atb.red, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.2, shadowRadius: 6, elevation: 3, minWidth: s(115, 95) },
+  continueGradient:{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: s(50, 46), paddingHorizontal: s(18, 14), gap: 8 },
+  continueBtnText: { fontSize: s(13, 12), fontWeight: '700', color: '#fff' },
+  arrowRight:      { width: 6, height: 6, borderRightWidth: 2, borderTopWidth: 2, borderColor: '#fff', transform: [{ rotate: '45deg' }] },
+
+  footer:        { alignItems: 'center', paddingTop: s(20, 16), paddingBottom: 8 },
+  footerDivider: { width: 40, height: 1.5, backgroundColor: colors.neutral.gray200, borderRadius: 1, marginBottom: 8 },
+  footerText:    { fontSize: s(11, 10), color: colors.neutral.gray400, marginBottom: 3, textAlign: 'center' },
+  footerSubtext: { fontSize: s(10, 9), color: colors.neutral.gray300, textAlign: 'center' },
 });
 
 export default OtpVerificationScreen;

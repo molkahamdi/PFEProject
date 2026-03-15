@@ -26,9 +26,54 @@ type DigigoScreenProps = {
   navigation: NavigationProp;
 };
 
+const PhaseIndicator: React.FC<{ currentPhase: number }> = ({ currentPhase }) => {
+  const phases = [
+   { id: 1, label: 'Données personnelles' },
+    { id: 2, label: 'Documents justificatifs' },
+    { id: 3, label: 'Résumer de la demande' },
+    { id: 4, label: 'Envoi de la demande' },
+    { id: 5, label: 'Signature éléctronique' },
+  ];
+  return (
+    <View style={styles.phaseContainer}>
+      {phases.map((phase, index) => (
+        <React.Fragment key={phase.id}>
+          <View style={styles.phaseItem}>
+            <View style={[
+              styles.phaseRadioOuter,
+              phase.id < currentPhase && styles.phaseRadioCompleted,
+              phase.id === currentPhase && styles.phaseRadioActive
+            ]}>
+              {phase.id < currentPhase ? (
+                <Text style={styles.phaseRadioCheck}>✓</Text>
+              ) : (
+                <View style={[
+                  styles.phaseRadioInner,
+                  phase.id === currentPhase && styles.phaseRadioInnerActive
+                ]} />
+              )}
+            </View>
+            <Text style={[
+              styles.phaseLabel,
+              phase.id === currentPhase && styles.phaseLabelActive,
+              phase.id < currentPhase && styles.phaseLabelCompleted
+            ]}>
+              {phase.label}
+            </Text>
+          </View>
+          {index < phases.length - 1 && <View style={styles.phaseConnector} />}
+        </React.Fragment>
+      ))}
+    </View>
+  );
+};
+
 const DigigoScreen: React.FC<DigigoScreenProps> = ({ navigation }) => {
   const [hasDigigo, setHasDigigo] = useState<'yes' | 'no'>('no');
   const [termsAccepted, setTermsAccepted] = useState(false);
+
+  // Phase actuelle (4 pour cet écran - Envoi)
+  const currentPhase = 4;
 
   const handleSaveAndExit = () => {
     Alert.alert(
@@ -149,11 +194,20 @@ const DigigoScreen: React.FC<DigigoScreenProps> = ({ navigation }) => {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.content}>
+            {/* ── Titre ── */}
             <View style={styles.titleSection}>
+              {/* pageNumber SUPPRIMÉ */}
               <Text style={styles.title}>Envoi de la demande</Text>
               <Text style={styles.subtitle}>
                 Finalisez votre demande de souscription Digipack
               </Text>
+              
+              {/* progressContainer SUPPRIMÉ */}
+
+              {/* Indicateur de phase horizontal */}
+              <View style={styles.phaseIndicatorWrapper}>
+                <PhaseIndicator currentPhase={currentPhase} />
+              </View>
             </View>
 
             {/* Section Digigo */}
@@ -371,9 +425,26 @@ const styles = StyleSheet.create({
   content: {
     padding: 24,
   },
+
+  // Styles pour PhaseIndicator
+  phaseIndicatorWrapper: { marginTop: 2 },
+  phaseContainer: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingVertical: 8 },
+  phaseItem: { alignItems: 'center', flex: 1 },
+  phaseRadioOuter: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: colors.neutral.gray400, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
+  phaseRadioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: 'transparent' },
+  phaseRadioInnerActive: { backgroundColor: colors.atb.red },
+  phaseRadioActive: { borderColor: colors.atb.red },
+  phaseRadioCompleted: { borderColor: colors.atb.red, backgroundColor: colors.atb.red },
+  phaseRadioCheck: { fontSize: 12, color: colors.neutral.white, fontWeight: 'bold' },
+  phaseLabel: { fontSize: 10, color: colors.neutral.gray600, fontWeight: '500', textAlign: 'center' },
+  phaseLabelActive: { color: colors.atb.red, fontWeight: '700' },
+  phaseLabelCompleted: { color: colors.neutral.gray800, fontWeight: '600' },
+  phaseConnector: { width: 20, height: 2, backgroundColor: colors.neutral.gray300, alignSelf: 'center', marginTop: -10 },
+
   titleSection: {
-    marginBottom: 20,
+    marginBottom: 12,
   },
+  // pageNumber SUPPRIMÉ
   title: {
     fontSize: 26,
     fontWeight: '700',
@@ -386,7 +457,13 @@ const styles = StyleSheet.create({
     color: colors.neutral.gray600,
     fontWeight: '400',
     lineHeight: 19,
+    marginBottom: 12,
   },
+  // progressContainer SUPPRIMÉ
+  // progressBarBackground SUPPRIMÉ
+  // progressBarFill SUPPRIMÉ
+  // progressText SUPPRIMÉ
+  
   card: {
     backgroundColor: colors.neutral.white,
     borderRadius: 12,

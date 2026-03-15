@@ -219,7 +219,7 @@ const HomeScreen = () => {
               </Text>
 
               <View style={styles.buttonContainer}>
-                // Dans HomeScreen.tsx - Remplacer le onPress existant
+               
 
 {/* BOUTON E-HOUWIYA */}
 <TouchableOpacity 

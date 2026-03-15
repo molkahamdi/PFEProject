@@ -1,15 +1,6 @@
-// ============================================================
-//  frontend/services/customerApi.ts
-//  APPELS API CÔTÉ CLIENT — VERSION FINALE COMPLÈTE
-// ============================================================
 
-// ── Configuration ─────────────────────────────────────────────
-// Remplacez par l'URL de votre backend (localhost en dev, URL de prod en production)
-const BASE_URL = 'http://192.168.100.6:3000'; // ← Adaptez si nécessaire
+const BASE_URL = 'http://192.168.100.6:3000'; 
 
-// ══════════════════════════════════════════════════════════════
-//  UTILITAIRE : appel HTTP générique avec gestion d'erreurs
-// ══════════════════════════════════════════════════════════════
 
 async function apiCall<T>(
   endpoint: string,
@@ -226,11 +217,58 @@ export async function findCustomerByEmail(
   return response.success ? response.data : null;
 }
 
-// Ajoutez ceci à la fin de customerApi.ts
+// ══════════════════════════════════════════════════════════════
+//  MISE À JOUR — Mettre à jour partiellement un customer
+//  Appelé par RecapitulatifScreen → handleContinue (si fromRecap = true)
+// ══════════════════════════════════════════════════════════════
 export async function updateCustomer(
   customerId: string,
   data: Partial<Record<string, any>>,  // Partial pour permettre des mises à jour partielles
 ): Promise<{ id: string; currentStep: number; status: string }> {
   const response = await apiCall<CustomerCreatedResponse>(`/customer/${customerId}`, 'PATCH', data);
   return response.data;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  TYPES
+// ══════════════════════════════════════════════════════════════
+
+export interface EmailOtpResponse {
+  success: boolean;
+  message: string;
+}
+
+export interface VerifyEmailOtpResponse {
+  success: boolean;
+  message: string;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  EMAIL OTP — Demander l'envoi du code par email
+//  Appelé par OtpVerificationScreen quand mode === 'email'
+// ══════════════════════════════════════════════════════════════
+
+export async function requestEmailOtp(
+  customerId: string,
+  firstName?: string,
+): Promise<EmailOtpResponse> {
+  return apiCall<EmailOtpResponse>('/email-otp/request', 'POST', {
+    customerId,
+    firstName,
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+//  EMAIL OTP — Vérifier le code saisi par l'utilisateur
+//  Appelé par OtpVerificationScreen → handleContinue (mode email)
+// ══════════════════════════════════════════════════════════════
+
+export async function verifyEmailOtp(
+  customerId: string,
+  code:       string,
+): Promise<VerifyEmailOtpResponse> {
+  return apiCall<VerifyEmailOtpResponse>('/email-otp/verify', 'POST', {
+    customerId,
+    code,
+  });
 }

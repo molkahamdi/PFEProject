@@ -8,7 +8,6 @@ import {
   Platform
 } from 'react-native';
 import colors from 'constants/colors';
-
 interface OtpInputProps {
   length?: number;
   onComplete?: (otp: string) => void;

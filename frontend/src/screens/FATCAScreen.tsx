@@ -2,6 +2,7 @@
 //  frontend/screens/FATCAScreen.tsx — VERSION FINALE
 //  ✅ Création normale | ✅ Modification fromRecap (pré-rempli)
 //  ✅ Style original conservé (radio buttons, catégories, summary)
+//  ✅ Indicateur de phase horizontal (phase 1 - Données personnelles)
 // ============================================================
 import React, { useState, useEffect } from 'react';
 import {
@@ -47,6 +48,50 @@ const KEY_TO_ID: Record<string, string> = Object.fromEntries(
   Object.entries(ID_TO_KEY).map(([k, v]) => [v, k])
 );
 
+// ── PhaseIndicator HORIZONTAL (identique à OtpVerification) ────
+const PhaseIndicator: React.FC<{ currentPhase: number }> = ({ currentPhase }) => {
+  const phases = [
+   { id: 1, label: 'Données personnelles' },
+    { id: 2, label: 'Documents justificatifs' },
+    { id: 3, label: 'Résumer de la demande' },
+    { id: 4, label: 'Envoi de la demande' },
+    { id: 5, label: 'Signature éléctronique' },
+  ];
+
+  return (
+    <View style={styles.phaseContainer}>
+      {phases.map((phase, index) => (
+        <React.Fragment key={phase.id}>
+          <View style={styles.phaseItem}>
+            <View style={[
+              styles.phaseRadioOuter,
+              phase.id < currentPhase && styles.phaseRadioCompleted,
+              phase.id === currentPhase && styles.phaseRadioActive
+            ]}>
+              {phase.id < currentPhase ? (
+                <Text style={styles.phaseRadioCheck}>✓</Text>
+              ) : (
+                <View style={[
+                  styles.phaseRadioInner,
+                  phase.id === currentPhase && styles.phaseRadioInnerActive
+                ]} />
+              )}
+            </View>
+            <Text style={[
+              styles.phaseLabel,
+              phase.id === currentPhase && styles.phaseLabelActive,
+              phase.id < currentPhase && styles.phaseLabelCompleted
+            ]}>
+              {phase.label}
+            </Text>
+          </View>
+          {index < phases.length - 1 && <View style={styles.phaseConnector} />}
+        </React.Fragment>
+      ))}
+    </View>
+  );
+};
+
 // ── Sous-composants ──────────────────────────────────────────
 const Header: React.FC = () => (
   <View style={styles.header}>
@@ -85,6 +130,9 @@ const Footer: React.FC = () => (
 const FATCAScreen: React.FC<Props> = ({ navigation, route }) => {
   const { customerId } = route.params;
   const fromRecap = route.params?.fromRecap ?? false;
+
+  // Phase actuelle (toujours 1 pour cet écran - Données personnelles)
+  const currentPhase = 1;
 
   const [isLoading, setIsLoading]   = useState(false);
   const [isFetching, setIsFetching] = useState(false);
@@ -153,7 +201,10 @@ const FATCAScreen: React.FC<Props> = ({ navigation, route }) => {
         // ✅ MODE CRÉATION
         await saveFatca(customerId, payload);
         // @ts-ignore
-        navigation.navigate('DocumentsJustificatif', { customerId });
+        navigation.navigate('DocumentsJustificatif', {
+          customerId,
+          formData: route.params?.formData,
+        });
       }
     } catch (error: any) {
       Alert.alert('Erreur', error.message || 'Erreur lors de la sauvegarde FATCA.');
@@ -182,21 +233,21 @@ const FATCAScreen: React.FC<Props> = ({ navigation, route }) => {
 
             {/* Titre */}
             <View style={styles.titleSection}>
-              <View style={styles.titleHeader}>
-                <View>
-                  <Text style={styles.title}>{fromRecap ? 'Modifier la déclaration FATCA' : 'Déclaration FATCA'}</Text>
-                  <Text style={styles.subtitle}>Formulaire de conformité réglementaire</Text>
-                </View>
-                <View style={styles.progressIndicator}>
-                  <Text style={styles.progressText}>{answeredCount}/{questions.length}</Text>
-                </View>
+              {/* pageNumber SUPPRIMÉ */}
+              <Text style={styles.title}>{fromRecap ? 'Modifier la déclaration FATCA' : 'Déclaration FATCA'}</Text>
+              <Text style={styles.subtitle}>Formulaire de conformité réglementaire</Text>
+              
+              {/* progressContainer SUPPRIMÉ */}
+
+              {/* Indicateur de phase horizontal */}
+              <View style={styles.phaseIndicatorWrapper}>
+                <PhaseIndicator currentPhase={currentPhase} />
               </View>
             </View>
 
             {/* Bannière modification */}
             {fromRecap && (
               <View style={styles.editBanner}>
-              
                 <Text style={styles.editBannerText}>
                   Mode modification — Vos réponses précédentes sont pré-remplies.
                 </Text>
@@ -360,6 +411,7 @@ const FATCAScreen: React.FC<Props> = ({ navigation, route }) => {
   );
 };
 
+// ── Styles (avec ajout des styles pour PhaseIndicator) ──
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.neutral.white },
   flex: { flex: 1 },
@@ -375,16 +427,35 @@ const styles = StyleSheet.create({
   digipackBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 4, alignItems: 'center', justifyContent: 'center' },
   digipackText: { fontSize: 10, fontWeight: '800', color: colors.neutral.white, letterSpacing: 2 },
   scrollContent: { flexGrow: 1 },
-  content: { padding: 24 },
-  editBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(200,35,51,0.07)', borderWidth: 1, borderColor: 'rgba(200,35,51,0.2)', borderRadius: 10, padding: 14, marginBottom: 16 },
-  editBannerIcon: { fontSize: 18 },
-  editBannerText: { flex: 1, fontSize: 13, color: colors.atb.red, fontWeight: '500' },
-  titleSection: { marginBottom: 4 },
-  titleHeader: { marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  content: { padding: 24 }, 
+
+  // Styles pour PhaseIndicator (identique à OtpVerification)
+  phaseIndicatorWrapper: { marginTop: 2 },
+  phaseContainer: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingVertical: 8 },
+  phaseItem: { alignItems: 'center', flex: 1 },
+  phaseRadioOuter: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: colors.neutral.gray400, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
+  phaseRadioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: 'transparent' },
+  phaseRadioInnerActive: { backgroundColor: colors.atb.red },
+  phaseRadioActive: { borderColor: colors.atb.red },
+  phaseRadioCompleted: { borderColor: colors.atb.red, backgroundColor: colors.atb.red },
+  phaseRadioCheck: { fontSize: 12, color: colors.neutral.white, fontWeight: 'bold' },
+  phaseLabel: { fontSize: 10, color: colors.neutral.gray600, fontWeight: '500', textAlign: 'center' },
+  phaseLabelActive: { color: colors.atb.red, fontWeight: '700' },
+  phaseLabelCompleted: { color: colors.neutral.gray800, fontWeight: '600' },
+  phaseConnector: { width: 20, height: 2, backgroundColor: colors.neutral.gray300, alignSelf: 'center', marginTop: -10 },
+
+  titleSection: { marginBottom: 20 },
+  // pageNumber SUPPRIMÉ
   title: { fontSize: 26, fontWeight: '700', color: colors.neutral.gray900, marginBottom: 6, letterSpacing: -0.3 },
-  subtitle: { fontSize: 13, color: colors.neutral.gray600, fontWeight: '400', lineHeight: 19 },
-  progressIndicator: { backgroundColor: colors.neutral.beige, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-  progressText: { fontSize: 12, fontWeight: '600', color: colors.atb.red },
+  subtitle: { fontSize: 13, color: colors.neutral.gray600, fontWeight: '400', lineHeight: 19, marginBottom: 8 },
+  // progressContainer SUPPRIMÉ
+  // progressBarBackground SUPPRIMÉ
+  // progressBarFill SUPPRIMÉ
+  // progressText SUPPRIMÉ
+
+  editBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(200,35,51,0.07)', borderWidth: 1, borderColor: 'rgba(200,35,51,0.2)', borderRadius: 10, padding: 14, marginBottom: 16 },
+  editBannerText: { flex: 1, fontSize: 13, color: colors.atb.red, fontWeight: '500' },
+  
   card: { backgroundColor: colors.neutral.white, borderRadius: 12, marginBottom: 16, shadowColor: colors.neutral.gray900, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
   introCard: { padding: 20, marginBottom: 15 },
   introHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },

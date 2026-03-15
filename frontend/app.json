@@ -11,10 +11,14 @@
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
-      
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "ATB DigiPack utilise la caméra pour scanner vos documents d'identité.",
+        "NSPhotoLibraryUsageDescription": "ATB DigiPack accède à vos photos pour importer vos documents d'identité.",
+        "NSPhotoLibraryAddUsageDescription": "ATB DigiPack sauvegarde les photos de vos documents."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -22,16 +26,26 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-  
     "plugins": [
       "expo-secure-store",
-      "expo-video"
-      
+      "expo-video",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "ATB DigiPack accède à vos photos pour importer vos documents d'identité.",
+          "cameraPermission": "ATB DigiPack utilise la caméra pour scanner vos documents d'identité."
+        }
+      ]
     ]
   }
 }
