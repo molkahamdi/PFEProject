@@ -66,7 +66,7 @@ export declare class CustomerController {
             submittedAt: Date;
         };
     }>;
-    update(id: string, updateCustomerDto: Partial<CreateCustomerDto>): Promise<{
+    update(id: string, dto: Partial<CreateCustomerDto>): Promise<{
         success: boolean;
         message: string;
         data: {
@@ -75,4 +75,5 @@ export declare class CustomerController {
             status: import("../entities/customer.entity").CustomerStatus;
         };
     }>;
+    ocrScan(customerId: string, file: Express.Multer.File, docType: string): Promise<any>;
 }

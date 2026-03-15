@@ -18,20 +18,53 @@ const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const customer_entity_1 = require("../entities/customer.entity");
-const sms_service_1 = require("../sms/sms.service");
+const FormData = require('form-data');
+const axios = require('axios');
 let CustomerService = CustomerService_1 = class CustomerService {
     repo;
-    smsService;
     logger = new common_1.Logger(CustomerService_1.name);
-    constructor(repo, smsService) {
+    OCR_URL = process.env.OCR_SERVICE_URL || 'http://localhost:8001';
+    constructor(repo) {
         this.repo = repo;
-        this.smsService = smsService;
     }
     async findOrFail(id) {
         const c = await this.repo.findOne({ where: { id } });
         if (!c)
             throw new common_1.NotFoundException(`Customer "${id}" introuvable.`);
         return c;
+    }
+    async ocrScan(customerId, file, docType) {
+        this.logger.log(`[OCR] Scan [${docType}] pour customer ${customerId}`);
+        this.logger.log(`[OCR] Fichier reçu : ${file?.originalname} | ${file?.size} bytes`);
+        this.logger.log(`[OCR] Envoi vers Python : ${this.OCR_URL}/ocr/scan`);
+        if (!file) {
+            throw new common_1.BadRequestException('Fichier manquant.');
+        }
+        const form = new FormData();
+        form.append('document', file.buffer, {
+            filename: file.originalname || 'document.jpg',
+            contentType: file.mimetype || 'image/jpeg',
+        });
+        form.append('docType', docType);
+        form.append('customerId', customerId);
+        try {
+            const response = await axios.post(`${this.OCR_URL}/ocr/scan`, form, {
+                headers: form.getHeaders(),
+                timeout: 115_000,
+                maxBodyLength: Infinity,
+                maxContentLength: Infinity,
+            });
+            const result = response.data;
+            this.logger.log(`[OCR] ✅ Succès [${docType}] confidence=${result.confidence}`);
+            this.logger.log(`[OCR] parsedData : ${JSON.stringify(result.parsedData)}`);
+            return result;
+        }
+        catch (error) {
+            const msg = error?.response?.data?.detail || error?.message || 'Erreur OCR inconnue';
+            this.logger.error(`[OCR] Erreur Python : ${JSON.stringify(error?.response?.data || msg)}`);
+            this.logger.error(`[OCR] ❌ Erreur : ${msg}`);
+            throw new common_1.BadRequestException(`Erreur microservice OCR : ${msg}`);
+        }
     }
     async create(dto) {
         const byEmail = await this.repo.findOne({ where: { email: dto.email } });
@@ -61,35 +94,20 @@ let CustomerService = CustomerService_1 = class CustomerService {
         customer.otpAttempts = 0;
         customer.status = customer_entity_1.CustomerStatus.PENDING_OTP;
         await this.repo.save(customer);
-        try {
-            await this.smsService.sendOtp(customer.phoneNumber);
-            this.logger.log(`📱 SMS OTP envoyé au +216${customer.phoneNumber}`);
-        }
-        catch (err) {
-            this.logger.warn(`⚠️ SMS non envoyé : ${err.message}`);
-        }
+        this.logger.log(`🔑 OTP généré pour ${id} : ${otp}`);
         return { otp, expiresAt };
     }
     async verifyOtp(id, dto) {
         const customer = await this.findOrFail(id);
-        if (customer.otpAttempts >= 3) {
+        if (customer.otpAttempts >= 3)
             throw new common_1.BadRequestException('Trop de tentatives. Demandez un nouveau code.');
-        }
-        if (!customer.otpExpiresAt || new Date() > customer.otpExpiresAt) {
-            throw new common_1.BadRequestException('Le code OTP a expiré. Demandez un nouveau code.');
-        }
-        let isValid = false;
-        try {
-            isValid = await this.smsService.verifyOtpCode(customer.phoneNumber, dto.otpCode);
-        }
-        catch {
-            isValid = customer.otpCode === dto.otpCode;
-        }
+        if (!customer.otpExpiresAt || new Date() > customer.otpExpiresAt)
+            throw new common_1.BadRequestException('Le code OTP a expiré.');
+        const isValid = customer.otpCode === dto.otpCode;
         if (!isValid) {
             customer.otpAttempts += 1;
             await this.repo.save(customer);
-            const remaining = 3 - customer.otpAttempts;
-            throw new common_1.BadRequestException(`Code incorrect. ${remaining} tentative(s) restante(s).`);
+            throw new common_1.BadRequestException(`Code incorrect. ${3 - customer.otpAttempts} tentative(s) restante(s).`);
         }
         customer.isPhoneVerified = true;
         customer.otpCode = null;
@@ -98,36 +116,33 @@ let CustomerService = CustomerService_1 = class CustomerService {
         customer.status = customer_entity_1.CustomerStatus.FATCA_PENDING;
         customer.currentStep = 2;
         await this.repo.save(customer);
-        this.logger.log(`✅ Téléphone vérifié pour : ${id} → passage à FATCA`);
+        this.logger.log(`✅ OTP vérifié pour : ${id}`);
         return { success: true };
     }
     async saveFatca(id, dto) {
         const customer = await this.findOrFail(id);
-        if (!customer.isPhoneVerified) {
+        if (!customer.isPhoneVerified)
             throw new common_1.BadRequestException('Le téléphone doit être vérifié avant le FATCA.');
-        }
         Object.assign(customer, dto);
         customer.fatcaCompletedAt = new Date();
         customer.status = customer_entity_1.CustomerStatus.DOCUMENTS_PENDING;
         customer.currentStep = 3;
         const saved = await this.repo.save(customer);
-        this.logger.log(`📋 FATCA enregistré pour : ${id} → passage aux Documents`);
+        this.logger.log(`📋 FATCA enregistré pour : ${id}`);
         return saved;
     }
     async saveDocuments(id, dto) {
         const customer = await this.findOrFail(id);
-        if (dto.usePassport && !dto.passportPath) {
+        if (dto.usePassport && !dto.passportPath)
             throw new common_1.BadRequestException('Le chemin du passeport est requis.');
-        }
-        if (!dto.usePassport && (!dto.idCardFrontPath || !dto.idCardBackPath)) {
+        if (!dto.usePassport && (!dto.idCardFrontPath || !dto.idCardBackPath))
             throw new common_1.BadRequestException('Les deux faces de la CIN sont requises.');
-        }
         Object.assign(customer, dto);
         customer.documentsUploadedAt = new Date();
         customer.status = customer_entity_1.CustomerStatus.PERSONAL_PENDING;
         customer.currentStep = 4;
         const saved = await this.repo.save(customer);
-        this.logger.log(`📄 Documents enregistrés pour : ${id} → passage au formulaire perso`);
+        this.logger.log(`📄 Documents enregistrés pour : ${id}`);
         return saved;
     }
     async savePersonalForm(id, dto) {
@@ -137,23 +152,17 @@ let CustomerService = CustomerService_1 = class CustomerService {
         customer.submittedAt = new Date();
         customer.currentStep = 5;
         const saved = await this.repo.save(customer);
-        this.logger.log(`🎉 Dossier soumis pour : ${id} → statut SUBMITTED`);
+        this.logger.log(`🎉 Dossier soumis pour : ${id}`);
         return saved;
     }
-    async findOne(id) {
-        return this.findOrFail(id);
-    }
-    async findAll() {
-        return this.repo.find({ order: { createdAt: 'DESC' } });
-    }
-    async findByEmail(email) {
-        return this.repo.findOne({ where: { email } });
-    }
+    async findOne(id) { return this.findOrFail(id); }
+    async findAll() { return this.repo.find({ order: { createdAt: 'DESC' } }); }
+    async findByEmail(email) { return this.repo.findOne({ where: { email } }); }
     async update(id, dto) {
         const customer = await this.findOrFail(id);
         Object.assign(customer, dto);
         const updated = await this.repo.save(customer);
-        this.logger.log(`Customer mis à jour : ${id}`);
+        this.logger.log(`✏️ Customer mis à jour : ${id}`);
         return updated;
     }
 };
@@ -161,7 +170,6 @@ exports.CustomerService = CustomerService;
 exports.CustomerService = CustomerService = CustomerService_1 = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectRepository)(customer_entity_1.Customer)),
-    __metadata("design:paramtypes", [typeorm_2.Repository,
-        sms_service_1.SmsService])
+    __metadata("design:paramtypes", [typeorm_2.Repository])
 ], CustomerService);
 //# sourceMappingURL=customer.service.js.map

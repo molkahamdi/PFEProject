@@ -14,6 +14,7 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CustomerController = void 0;
 const common_1 = require("@nestjs/common");
+const platform_express_1 = require("@nestjs/platform-express");
 const customer_service_1 = require("./customer.service");
 const customer_dto_1 = require("./dto/customer.dto");
 let CustomerController = class CustomerController {
@@ -25,7 +26,7 @@ let CustomerController = class CustomerController {
         const customer = await this.service.create(dto);
         return {
             success: true,
-            message: 'Dossier créé. OTP à envoyer.',
+            message: 'Dossier créé.',
             data: {
                 id: customer.id,
                 currentStep: customer.currentStep,
@@ -51,7 +52,7 @@ let CustomerController = class CustomerController {
         const result = await this.service.generateOtp(id);
         return {
             success: true,
-            message: 'Code OTP envoyé.',
+            message: 'Code OTP généré.',
             devOnly_otp: result.otp,
             expiresAt: result.expiresAt,
         };
@@ -60,9 +61,7 @@ let CustomerController = class CustomerController {
         const result = await this.service.verifyOtp(id, dto);
         return {
             ...result,
-            message: result.success
-                ? 'Téléphone vérifié. Passage au FATCA.'
-                : 'Code OTP invalide',
+            message: result.success ? 'Téléphone vérifié.' : 'Code OTP invalide',
         };
     }
     async saveFatca(id, dto) {
@@ -70,11 +69,7 @@ let CustomerController = class CustomerController {
         return {
             success: true,
             message: 'Déclaration FATCA enregistrée.',
-            data: {
-                id: customer.id,
-                currentStep: customer.currentStep,
-                status: customer.status
-            },
+            data: { id: customer.id, currentStep: customer.currentStep, status: customer.status },
         };
     }
     async saveDocuments(id, dto) {
@@ -82,11 +77,7 @@ let CustomerController = class CustomerController {
         return {
             success: true,
             message: 'Documents enregistrés.',
-            data: {
-                id: customer.id,
-                currentStep: customer.currentStep,
-                status: customer.status
-            },
+            data: { id: customer.id, currentStep: customer.currentStep, status: customer.status },
         };
     }
     async savePersonalForm(id, dto) {
@@ -102,17 +93,16 @@ let CustomerController = class CustomerController {
             },
         };
     }
-    async update(id, updateCustomerDto) {
-        const customer = await this.service.update(id, updateCustomerDto);
+    async update(id, dto) {
+        const customer = await this.service.update(id, dto);
         return {
             success: true,
-            message: 'Customer mis à jour avec succès',
-            data: {
-                id: customer.id,
-                currentStep: customer.currentStep,
-                status: customer.status,
-            },
+            message: 'Customer mis à jour.',
+            data: { id: customer.id, currentStep: customer.currentStep, status: customer.status },
         };
+    }
+    async ocrScan(customerId, file, docType) {
+        return this.service.ocrScan(customerId, file, docType);
     }
 };
 exports.CustomerController = CustomerController;
@@ -196,6 +186,17 @@ __decorate([
     __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", Promise)
 ], CustomerController.prototype, "update", null);
+__decorate([
+    (0, common_1.Post)(':id/ocr/scan'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('document')),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.UploadedFile)()),
+    __param(2, (0, common_1.Body)('docType')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object, String]),
+    __metadata("design:returntype", Promise)
+], CustomerController.prototype, "ocrScan", null);
 exports.CustomerController = CustomerController = __decorate([
     (0, common_1.Controller)('customer'),
     __metadata("design:paramtypes", [customer_service_1.CustomerService])

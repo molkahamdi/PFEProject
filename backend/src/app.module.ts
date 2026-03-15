@@ -5,6 +5,8 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { Customer } from './entities/customer.entity';
 import { CustomerModule } from './customer/customer.module';
+import { OcrModule } from './ocr/ocr.module';
+import { EmailOtpModule } from './email-otp/email-otp.module';
 
 @Module({
   imports: [
@@ -21,12 +23,14 @@ import { CustomerModule } from './customer/customer.module';
         password: String(cfg.get<string>('POSTGRES_PASSWORD') || ''),
         database: cfg.get<string>('POSTGRES_DB'),
         entities: [Customer],
-        synchronize: true,  // ⚠️ DEV seulement
+        synchronize: true, 
         logging: ['error'],
       }),
     }),
 
     CustomerModule,
+    OcrModule,
+     EmailOtpModule
   ],
   controllers: [AppController],
   providers: [AppService],

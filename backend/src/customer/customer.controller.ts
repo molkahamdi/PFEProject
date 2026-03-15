@@ -1,3 +1,7 @@
+// ============================================================
+//  backend/src/customer/customer.controller.ts
+//  ✅ Endpoint OCR ajouté : POST /customer/:id/ocr/scan
+// ============================================================
 import {
   Controller,
   Post,
@@ -7,7 +11,10 @@ import {
   HttpCode,
   HttpStatus,
   Patch,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { CustomerService } from './customer.service';
 import {
   CreateCustomerDto,
@@ -21,21 +28,23 @@ import {
 export class CustomerController {
   constructor(private readonly service: CustomerService) {}
 
+  // ── Créer un customer ─────────────────────────────────────
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() dto: CreateCustomerDto) {
     const customer = await this.service.create(dto);
     return {
       success: true,
-      message: 'Dossier créé. OTP à envoyer.',
+      message: 'Dossier créé.',
       data: {
-        id: customer.id,
+        id:          customer.id,
         currentStep: customer.currentStep,
-        status: customer.status,
+        status:      customer.status,
       },
     };
   }
 
+  // ── Lire un customer ──────────────────────────────────────
   @Get(':id')
   async findOne(@Param('id') id: string) {
     const customer = await this.service.findOne(id);
@@ -55,30 +64,31 @@ export class CustomerController {
     return { success: true, data: customer };
   }
 
-@Post(':id/otp')
-@HttpCode(HttpStatus.OK)
-async generateOtp(@Param('id') id: string) {
-  const result = await this.service.generateOtp(id);
-  return {
-    success: true,
-    message: 'Code OTP envoyé.',
-    devOnly_otp: result.otp, // ← visible dans les logs Expo en DEV
-    expiresAt: result.expiresAt,
-  };
-}
+  // ── Générer OTP ───────────────────────────────────────────
+  @Post(':id/otp')
+  @HttpCode(HttpStatus.OK)
+  async generateOtp(@Param('id') id: string) {
+    const result = await this.service.generateOtp(id);
+    return {
+      success:     true,
+      message:     'Code OTP généré.',
+      devOnly_otp: result.otp,
+      expiresAt:   result.expiresAt,
+    };
+  }
 
+  // ── Vérifier OTP ─────────────────────────────────────────
   @Post(':id/verify-otp')
   @HttpCode(HttpStatus.OK)
   async verifyOtp(@Param('id') id: string, @Body() dto: VerifyOtpDto) {
     const result = await this.service.verifyOtp(id, dto);
     return {
       ...result,
-      message: result.success 
-        ? 'Téléphone vérifié. Passage au FATCA.' 
-        : 'Code OTP invalide',
+      message: result.success ? 'Téléphone vérifié.' : 'Code OTP invalide',
     };
   }
 
+  // ── FATCA ─────────────────────────────────────────────────
   @Post(':id/fatca')
   @HttpCode(HttpStatus.OK)
   async saveFatca(@Param('id') id: string, @Body() dto: SaveFatcaDto) {
@@ -86,14 +96,11 @@ async generateOtp(@Param('id') id: string) {
     return {
       success: true,
       message: 'Déclaration FATCA enregistrée.',
-      data: { 
-        id: customer.id, 
-        currentStep: customer.currentStep, 
-        status: customer.status 
-      },
+      data: { id: customer.id, currentStep: customer.currentStep, status: customer.status },
     };
   }
 
+  // ── Documents ─────────────────────────────────────────────
   @Post(':id/documents')
   @HttpCode(HttpStatus.OK)
   async saveDocuments(@Param('id') id: string, @Body() dto: SaveDocumentsDto) {
@@ -101,14 +108,11 @@ async generateOtp(@Param('id') id: string) {
     return {
       success: true,
       message: 'Documents enregistrés.',
-      data: {  
-        id: customer.id, 
-        currentStep: customer.currentStep, 
-        status: customer.status 
-      },
+      data: { id: customer.id, currentStep: customer.currentStep, status: customer.status },
     };
   }
 
+  // ── Formulaire personnel ──────────────────────────────────
   @Post(':id/personal-form')
   @HttpCode(HttpStatus.OK)
   async savePersonalForm(@Param('id') id: string, @Body() dto: SavePersonalFormDto) {
@@ -117,28 +121,36 @@ async generateOtp(@Param('id') id: string) {
       success: true,
       message: 'Dossier soumis avec succès !',
       data: {
-        id: customer.id,
+        id:          customer.id,
         currentStep: customer.currentStep,
-        status: customer.status,
+        status:      customer.status,
         submittedAt: customer.submittedAt,
       },
     };
   }
+
+  // ── Mise à jour partielle ─────────────────────────────────
   @Patch(':id')
-async update(
-  @Param('id') id: string,
-  @Body() updateCustomerDto: Partial<CreateCustomerDto>, // ou un DTO dédié
-) {
-  const customer = await this.service.update(id, updateCustomerDto);
-  return {
-    success: true,
-    message: 'Customer mis à jour avec succès',
-    data: {
-      id: customer.id,
-      currentStep: customer.currentStep,
-      status: customer.status,
-    },
-  };
-}
-  
+  async update(@Param('id') id: string, @Body() dto: Partial<CreateCustomerDto>) {
+    const customer = await this.service.update(id, dto);
+    return {
+      success: true,
+      message: 'Customer mis à jour.',
+      data: { id: customer.id, currentStep: customer.currentStep, status: customer.status },
+    };
+  }
+
+  // ── ✅ OCR SCAN — le front envoie la photo ici ────────────
+  // Le téléphone ne peut pas atteindre Python :8001 directement
+  // → NestJS reçoit la photo et la transmet à Python en local
+  @Post(':id/ocr/scan')
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FileInterceptor('document'))
+  async ocrScan(
+    @Param('id') customerId: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('docType') docType: string,
+  ) {
+    return this.service.ocrScan(customerId, file, docType);
+  }
 }

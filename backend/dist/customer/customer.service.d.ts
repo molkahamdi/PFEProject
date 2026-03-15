@@ -1,13 +1,13 @@
 import { Repository } from 'typeorm';
 import { Customer } from '../entities/customer.entity';
 import { CreateCustomerDto, VerifyOtpDto, SaveFatcaDto, SaveDocumentsDto, SavePersonalFormDto } from './dto/customer.dto';
-import { SmsService } from '../sms/sms.service';
 export declare class CustomerService {
     private readonly repo;
-    private readonly smsService;
     private readonly logger;
-    constructor(repo: Repository<Customer>, smsService: SmsService);
+    private readonly OCR_URL;
+    constructor(repo: Repository<Customer>);
     private findOrFail;
+    ocrScan(customerId: string, file: Express.Multer.File, docType: string): Promise<any>;
     create(dto: CreateCustomerDto): Promise<Customer>;
     generateOtp(id: string): Promise<{
         otp: string;

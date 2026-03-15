@@ -14,6 +14,8 @@ const app_controller_1 = require("./app.controller");
 const app_service_1 = require("./app.service");
 const customer_entity_1 = require("./entities/customer.entity");
 const customer_module_1 = require("./customer/customer.module");
+const ocr_module_1 = require("./ocr/ocr.module");
+const email_otp_module_1 = require("./email-otp/email-otp.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -37,6 +39,8 @@ exports.AppModule = AppModule = __decorate([
                 }),
             }),
             customer_module_1.CustomerModule,
+            ocr_module_1.OcrModule,
+            email_otp_module_1.EmailOtpModule
         ],
         controllers: [app_controller_1.AppController],
         providers: [app_service_1.AppService],
