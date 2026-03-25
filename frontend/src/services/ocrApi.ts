@@ -4,11 +4,10 @@
 // ✅ PASSPORT : comparaison latin ↔ latin (lastNameLatin / firstNameLatin)
 // ✅ CIN_RECTO : comparaison arabe ↔ arabe (lastNameArabic / firstNameArabic)
 
-const BACKEND_URL = 'http://192.168.100.6:3000';
+const BACKEND_URL = 'http://172.20.10.2:3000';
 
 export type DocType     = 'CIN_RECTO' | 'CIN_VERSO' | 'PASSPORT';
 export type MatchStatus = 'MATCH' | 'PARTIAL' | 'MISMATCH' | 'UNVERIFIED';
-
 export interface OcrFormData {
   // CIN — champs arabes
   lastName?:      string;   // ← contient lastNameArabic

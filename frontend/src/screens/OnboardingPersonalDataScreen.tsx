@@ -70,7 +70,7 @@ const INITIAL_FORM: FormData = {
 };
 
 // ── Sous-composants ──────────────────────────────────────────
-const Header: React.FC = () => (
+const Header: React.FC = () => ( // React.FC est un type TypeScript qui signifie React Function Component ,décrit la forme d'un composant fonctionnel React . 
   <View style={styles.header}>
     <View style={styles.headerLeft}>
       <View style={styles.logoContainer}>
@@ -79,6 +79,9 @@ const Header: React.FC = () => (
         </LinearGradient>
       </View>
       <View>
+
+
+
         <Text style={styles.bankName}>Arab Tunisian Bank</Text>
         <Text style={styles.bankSubtitle}>البنك العربي التونسي</Text>
       </View>

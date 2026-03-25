@@ -1,5 +1,5 @@
 
-const BASE_URL = 'http://192.168.100.6:3000'; 
+const BASE_URL = 'http://172.20.10.2:3000'; 
 
 
 async function apiCall<T>(

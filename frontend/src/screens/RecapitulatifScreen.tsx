@@ -359,7 +359,7 @@ const RecapitulatifScreen: React.FC<Props> = ({ navigation, route }) => {
             <TouchableOpacity
               onPress={() => {
                 // @ts-ignore
-                navigation.navigate('DigigoScreen', { customerId });
+              navigation.navigate('ContractScreen', { customerId});
               }}
               style={styles.continueButton}
             >

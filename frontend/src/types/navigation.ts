@@ -35,6 +35,9 @@ export type RootStackParamList = {
   IdentityVerification: undefined;
   ForgetPassword: undefined;
   NewPassword: undefined;
+   ContractScreen: {
+    customerId: string;
+  };
 };
 
 export type NavigationProp<T extends keyof RootStackParamList> =

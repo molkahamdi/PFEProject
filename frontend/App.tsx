@@ -19,6 +19,7 @@ import ResumeWithReferenceScreen from '@/screens/ResumeWithReferenceScreen';
 import ForgetPasswordScreen from '@/screens/ForgotPasswordScreen';
 import NewPasswordScreen from '@/screens/NewPasswordScreen';
 import RecapitulatifScreen from '@/screens/RecapitulatifScreen';
+import ContractScreen from '@/screens/ContractScreen';
 const Stack = createNativeStackNavigator<RootStackParamList>();
 export default function App() {
   return (
@@ -90,7 +91,10 @@ export default function App() {
           name="Recapitulatif" 
           component={RecapitulatifScreen}
         />
-        
+        <Stack.Screen 
+          name="ContractScreen" 
+          component={ContractScreen}
+        />
        
       </Stack.Navigator>
       
