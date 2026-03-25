@@ -1,5 +1,5 @@
 import { IsString, IsOptional, IsNumber, IsEnum, IsBoolean } from 'class-validator';
-import { CustomerStatus } from '../../entities/customer.entity';
+import { CustomerStatus } from '../entities/customer.entity';
 
 /**
  * DTO pour mettre à jour le customer au fil des étapes suivantes

@@ -7,7 +7,7 @@ import {
   IsString, IsEmail, IsEnum, IsOptional, IsNotEmpty,
   Length, Matches, IsBoolean, IsNumber,
 } from 'class-validator';
-import { IdentificationSource } from '../../entities/customer.entity';
+import { IdentificationSource } from '../entities/customer.entity';
 
 // ──────────────────────────────────────────────────────────────
 //  DTO ÉTAPE 1 : Données personnelles (OnboardingPersonalDataScreen)

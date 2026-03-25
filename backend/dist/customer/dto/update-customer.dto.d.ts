@@ -1,4 +1,4 @@
-import { CustomerStatus } from '../../entities/customer.entity';
+import { CustomerStatus } from '../entities/customer.entity';
 export declare class UpdateCustomerDto {
     idCardFrontPath?: string;
     idCardBackPath?: string;

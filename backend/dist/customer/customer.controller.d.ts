@@ -9,24 +9,24 @@ export declare class CustomerController {
         data: {
             id: string;
             currentStep: number;
-            status: import("../entities/customer.entity").CustomerStatus;
+            status: import("./entities/customer.entity").CustomerStatus;
         };
     }>;
     findOne(id: string): Promise<{
         success: boolean;
-        data: import("../entities/customer.entity").Customer;
+        data: import("./entities/customer.entity").Customer;
     }>;
     findAll(): Promise<{
         success: boolean;
         count: number;
-        data: import("../entities/customer.entity").Customer[];
+        data: import("./entities/customer.entity").Customer[];
     }>;
     findByEmail(email: string): Promise<{
         success: boolean;
         data: null;
     } | {
         success: boolean;
-        data: import("../entities/customer.entity").Customer;
+        data: import("./entities/customer.entity").Customer;
     }>;
     generateOtp(id: string): Promise<{
         success: boolean;
@@ -44,7 +44,7 @@ export declare class CustomerController {
         data: {
             id: string;
             currentStep: number;
-            status: import("../entities/customer.entity").CustomerStatus;
+            status: import("./entities/customer.entity").CustomerStatus;
         };
     }>;
     saveDocuments(id: string, dto: SaveDocumentsDto): Promise<{
@@ -53,7 +53,7 @@ export declare class CustomerController {
         data: {
             id: string;
             currentStep: number;
-            status: import("../entities/customer.entity").CustomerStatus;
+            status: import("./entities/customer.entity").CustomerStatus;
         };
     }>;
     savePersonalForm(id: string, dto: SavePersonalFormDto): Promise<{
@@ -62,7 +62,7 @@ export declare class CustomerController {
         data: {
             id: string;
             currentStep: number;
-            status: import("../entities/customer.entity").CustomerStatus;
+            status: import("./entities/customer.entity").CustomerStatus;
             submittedAt: Date;
         };
     }>;
@@ -72,7 +72,7 @@ export declare class CustomerController {
         data: {
             id: string;
             currentStep: number;
-            status: import("../entities/customer.entity").CustomerStatus;
+            status: import("./entities/customer.entity").CustomerStatus;
         };
     }>;
     ocrScan(customerId: string, file: Express.Multer.File, docType: string): Promise<any>;

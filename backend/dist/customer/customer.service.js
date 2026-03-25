@@ -17,7 +17,7 @@ exports.CustomerService = void 0;
 const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
-const customer_entity_1 = require("../entities/customer.entity");
+const customer_entity_1 = require("./entities/customer.entity");
 const FormData = require('form-data');
 const axios = require('axios');
 let CustomerService = CustomerService_1 = class CustomerService {
@@ -72,7 +72,7 @@ let CustomerService = CustomerService_1 = class CustomerService {
             throw new common_1.ConflictException('Cet email est déjà utilisé.');
         const byCin = await this.repo.findOne({ where: { idCardNumber: dto.idCardNumber } });
         if (byCin)
-            throw new common_1.ConflictException('Ce numéro de CIN est déjà enregistré.');
+            throw new common_1.ConflictException('Ce numéro de CIN est déjà utilisé.');
         const customer = this.repo.create({
             ...dto,
             identificationSource: dto.identificationSource ?? customer_entity_1.IdentificationSource.MANUAL,
@@ -81,7 +81,7 @@ let CustomerService = CustomerService_1 = class CustomerService {
             otpAttempts: 0,
         });
         const saved = await this.repo.save(customer);
-        this.logger.log(`✅ Customer créé : ${saved.id} | ${saved.email}`);
+        this.logger.log(`Customer créé : ${saved.id} | ${saved.email}`);
         return saved;
     }
     async generateOtp(id) {
@@ -94,7 +94,7 @@ let CustomerService = CustomerService_1 = class CustomerService {
         customer.otpAttempts = 0;
         customer.status = customer_entity_1.CustomerStatus.PENDING_OTP;
         await this.repo.save(customer);
-        this.logger.log(`🔑 OTP généré pour ${id} : ${otp}`);
+        this.logger.log(` OTP généré pour ${id} : ${otp}`);
         return { otp, expiresAt };
     }
     async verifyOtp(id, dto) {
@@ -116,7 +116,7 @@ let CustomerService = CustomerService_1 = class CustomerService {
         customer.status = customer_entity_1.CustomerStatus.FATCA_PENDING;
         customer.currentStep = 2;
         await this.repo.save(customer);
-        this.logger.log(`✅ OTP vérifié pour : ${id}`);
+        this.logger.log(` OTP vérifié pour : ${id}`);
         return { success: true };
     }
     async saveFatca(id, dto) {
@@ -128,7 +128,7 @@ let CustomerService = CustomerService_1 = class CustomerService {
         customer.status = customer_entity_1.CustomerStatus.DOCUMENTS_PENDING;
         customer.currentStep = 3;
         const saved = await this.repo.save(customer);
-        this.logger.log(`📋 FATCA enregistré pour : ${id}`);
+        this.logger.log(`FATCA enregistré pour : ${id}`);
         return saved;
     }
     async saveDocuments(id, dto) {
@@ -142,7 +142,7 @@ let CustomerService = CustomerService_1 = class CustomerService {
         customer.status = customer_entity_1.CustomerStatus.PERSONAL_PENDING;
         customer.currentStep = 4;
         const saved = await this.repo.save(customer);
-        this.logger.log(`📄 Documents enregistrés pour : ${id}`);
+        this.logger.log(` Documents enregistrés pour : ${id}`);
         return saved;
     }
     async savePersonalForm(id, dto) {
@@ -162,7 +162,7 @@ let CustomerService = CustomerService_1 = class CustomerService {
         const customer = await this.findOrFail(id);
         Object.assign(customer, dto);
         const updated = await this.repo.save(customer);
-        this.logger.log(`✏️ Customer mis à jour : ${id}`);
+        this.logger.log(` Customer mis à jour : ${id}`);
         return updated;
     }
 };

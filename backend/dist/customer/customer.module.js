@@ -9,17 +9,19 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CustomerModule = void 0;
 const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
-const customer_entity_1 = require("../entities/customer.entity");
+const customer_entity_1 = require("./entities/customer.entity");
 const customer_controller_1 = require("./customer.controller");
 const customer_service_1 = require("./customer.service");
+const contract_service_1 = require("./contract/contract.service");
+const contract_controller_1 = require("./contract/contract.controller");
 let CustomerModule = class CustomerModule {
 };
 exports.CustomerModule = CustomerModule;
 exports.CustomerModule = CustomerModule = __decorate([
     (0, common_1.Module)({
         imports: [typeorm_1.TypeOrmModule.forFeature([customer_entity_1.Customer])],
-        controllers: [customer_controller_1.CustomerController],
-        providers: [customer_service_1.CustomerService],
+        controllers: [customer_controller_1.CustomerController, contract_controller_1.ContractController],
+        providers: [customer_service_1.CustomerService, contract_service_1.ContractService],
         exports: [customer_service_1.CustomerService],
     })
 ], CustomerModule);

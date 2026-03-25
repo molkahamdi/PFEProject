@@ -1,5 +1,5 @@
 import { Repository } from 'typeorm';
-import { Customer } from '../entities/customer.entity';
+import { Customer } from './entities/customer.entity';
 import { CreateCustomerDto, VerifyOtpDto, SaveFatcaDto, SaveDocumentsDto, SavePersonalFormDto } from './dto/customer.dto';
 export declare class CustomerService {
     private readonly repo;

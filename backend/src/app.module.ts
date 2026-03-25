@@ -3,7 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { Customer } from './entities/customer.entity';
+import { Customer } from './customer/entities/customer.entity';
 import { CustomerModule } from './customer/customer.module';
 import { OcrModule } from './ocr/ocr.module';
 import { EmailOtpModule } from './email-otp/email-otp.module';

@@ -15,7 +15,7 @@ import {
   Customer,
   CustomerStatus,
   IdentificationSource,
-} from '../entities/customer.entity';
+} from './entities/customer.entity';
 import {
   CreateCustomerDto,
   VerifyOtpDto,

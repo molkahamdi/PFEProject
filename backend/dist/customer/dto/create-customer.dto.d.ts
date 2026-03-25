@@ -1,4 +1,4 @@
-import { IdentificationSource } from '../../entities/customer.entity';
+import { IdentificationSource } from '../entities/customer.entity';
 export declare class CreateCustomerDto {
     identificationSource?: IdentificationSource;
     lastName: string;

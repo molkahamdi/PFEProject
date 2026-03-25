@@ -1,5 +1,5 @@
 import { IsString, IsEmail, IsEnum, IsOptional, IsNotEmpty, Length, Matches } from 'class-validator';
-import { IdentificationSource } from '../../entities/customer.entity';
+import { IdentificationSource } from '../entities/customer.entity';
 
 /**
  * DTO = Data Transfer Object
