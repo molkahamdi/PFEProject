@@ -1,8 +1,7 @@
 
+// ── Hook personnalisé pour gérer les scans OCR avec suivi des tentatives et blocage ───────────────────────────────
 import { useState, useCallback } from 'react';
-import {
-  scanDocument, OcrScanResult, OcrFormData, DocType,
-} from '../services/ocrApi';
+import {scanDocument, OcrScanResult, OcrFormData, DocType,} from '../services/ocrApi';
 
 // Clés de suivi des tentatives (une par document soumis à OCR)
 export type OcrDocKey = 'cinRecto' | 'passport';

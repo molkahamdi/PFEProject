@@ -1,13 +1,14 @@
 // ============================================================
 //  frontend/screens/FATCAScreen.tsx — VERSION FINALE
-//  ✅ Création normale | ✅ Modification fromRecap (pré-rempli)
-//  ✅ Style original conservé (radio buttons, catégories, summary)
-//  ✅ Indicateur de phase horizontal (phase 1 - Données personnelles)
+//  ✅ Popup immédiat dès qu'un "Oui" est sélectionné (TOUTES les 8 questions)
+//  ✅ Blocage total de la poursuite du processus
+//  ✅ Navigation retour vers l'écran d'accueil (Home)
 // ============================================================
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, KeyboardAvoidingView,
   Platform, StyleSheet, Image, StatusBar, Alert, ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -44,18 +45,15 @@ const ID_TO_KEY: Record<string, string> = {
   '4': 'isUsTaxpayer', '5': 'hasUsTransfers', '6': 'hasUsPhone',
   '7': 'hasUsProxy', '8': 'isPoliticallyExposed',
 };
-const KEY_TO_ID: Record<string, string> = Object.fromEntries(
-  Object.entries(ID_TO_KEY).map(([k, v]) => [v, k])
-);
 
-// ── PhaseIndicator HORIZONTAL (identique à OtpVerification) ────
+// ── PhaseIndicator HORIZONTAL ─────────────────────────────────
 const PhaseIndicator: React.FC<{ currentPhase: number }> = ({ currentPhase }) => {
   const phases = [
-   { id: 1, label: 'Données personnelles' },
+    { id: 1, label: 'Données personnelles' },
     { id: 2, label: 'Documents justificatifs' },
     { id: 3, label: 'Résumer de la demande' },
     { id: 4, label: 'Envoi de la demande' },
-    { id: 5, label: 'Signature éléctronique' },
+    { id: 5, label: 'Signature électronique' },
   ];
 
   return (
@@ -130,13 +128,14 @@ const Footer: React.FC = () => (
 const FATCAScreen: React.FC<Props> = ({ navigation, route }) => {
   const { customerId } = route.params;
   const fromRecap = route.params?.fromRecap ?? false;
+  const formData = route.params?.formData;
 
-  // Phase actuelle (toujours 1 pour cet écran - Données personnelles)
   const currentPhase = 1;
 
   const [isLoading, setIsLoading]   = useState(false);
   const [isFetching, setIsFetching] = useState(false);
   const [questions, setQuestions]   = useState<FATCAQuestion[]>(BASE_QUESTIONS);
+  const [blockModalVisible, setBlockModalVisible] = useState(false);
 
   // ── Chargement données existantes ────────────────────────
   useEffect(() => {
@@ -155,6 +154,14 @@ const FATCAScreen: React.FC<Props> = ({ navigation, route }) => {
     }
   }, []);
 
+  // ── Vérification FATCA ──────────────────────────────────────
+  // ✅ BLOQUE TOUTES LES QUESTIONS (1 à 8) si réponse "Oui"
+  const hasFatcaViolation = (): boolean => {
+    // Toutes les questions sont sensibles maintenant
+    const allQuestions = ['1', '2', '3', '4', '5', '6', '7', '8'];
+    return questions.some(q => allQuestions.includes(q.id) && q.value === true);
+  };
+
   // ── Calculs dérivés ──────────────────────────────────────
   const questionsByCategory = questions.reduce((acc, q) => {
     if (!acc[q.category]) acc[q.category] = [];
@@ -162,19 +169,34 @@ const FATCAScreen: React.FC<Props> = ({ navigation, route }) => {
     return acc;
   }, {} as Record<string, FATCAQuestion[]>);
 
-  const categories             = Object.keys(questionsByCategory);
-  const allQuestionsAnswered   = questions.every(q => q.value !== null);
-  const answeredCount          = questions.filter(q => q.value !== null).length;
-  const yesCount               = questions.filter(q => q.value === true).length;
-  const noCount                = questions.filter(q => q.value === false).length;
-  const pendingCount           = questions.length - answeredCount;
+  const categories = Object.keys(questionsByCategory);
+  const allQuestionsAnswered = questions.every(q => q.value !== null);
+  const answeredCount = questions.filter(q => q.value !== null).length;
+  const yesCount = questions.filter(q => q.value === true).length;
+  const pendingCount = questions.length - answeredCount;
 
-  const handleAnswer = (id: string, answer: boolean) =>
+  // ── Gestion des réponses ──────────────────────────────────────
+  const handleAnswer = (id: string, answer: boolean) => {
+    // Mettre à jour la question
     setQuestions(prev => prev.map(q => q.id === id ? { ...q, value: answer } : q));
+    
+    // ✅ SI la réponse est "Oui" POUR N'IMPORTE QUELLE QUESTION (1 à 8)
+    // Afficher IMMÉDIATEMENT le popup de blocage
+    if (answer === true) {
+      setBlockModalVisible(true);
+    }
+  };
 
   // ── Soumission ───────────────────────────────────────────
   const handleContinue = async () => {
+    // Si violation FATCA, ne pas continuer
+    if (hasFatcaViolation()) {
+      setBlockModalVisible(true);
+      return;
+    }
+    
     if (!allQuestionsAnswered) return;
+    
     setIsLoading(true);
     try {
       const payload = {
@@ -189,7 +211,6 @@ const FATCAScreen: React.FC<Props> = ({ navigation, route }) => {
       };
 
       if (fromRecap) {
-        // ✅ MODE MODIFICATION
         await updateCustomer(customerId, payload);
         Alert.alert('✅ Déclaration mise à jour', 'Vos réponses FATCA ont été sauvegardées.', [
           { text: 'Retour au récapitulatif', onPress: () => {
@@ -198,7 +219,6 @@ const FATCAScreen: React.FC<Props> = ({ navigation, route }) => {
           }},
         ]);
       } else {
-        // ✅ MODE CRÉATION
         await saveFatca(customerId, payload);
         // @ts-ignore
         navigation.navigate('DocumentsJustificatif', {
@@ -213,6 +233,12 @@ const FATCAScreen: React.FC<Props> = ({ navigation, route }) => {
     }
   };
 
+  // ── Gestion du retour vers l'accueil ──────────────────────────
+  const handleGoToHome = () => {
+    // @ts-ignore
+    navigation.navigate('Home');
+  };
+
   if (isFetching) {
     return (
       <SafeAreaView style={styles.loadingScreen} edges={['top']}>
@@ -225,6 +251,70 @@ const FATCAScreen: React.FC<Props> = ({ navigation, route }) => {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.neutral.gray100} />
+      
+      {/* ✅ Modal de blocage FATCA - Redirection vers l'accueil */}
+      <Modal
+        visible={blockModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setBlockModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalIconContainer}>
+                <Ionicons name="alert-circle" size={32} color={colors.atb.red} />
+              </View>
+              <Text style={styles.modalTitle}>Déclaration FATCA</Text>
+            </View>
+            
+            <View style={styles.modalDivider} />
+            
+            <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+              <Text style={styles.modalMessage}>
+                Conformément à la réglementation FATCA (Foreign Account Tax Compliance Act), nous ne sommes pas en mesure de poursuivre votre demande d'ouverture de compte en ligne.
+              </Text>
+              
+              <Text style={styles.modalSubMessage}>
+                Les informations que vous avez fournies indiquent un lien avec les États-Unis ou une situation nécessitant une vérification approfondie.
+              </Text>
+              
+              <View style={styles.modalInfoBox}>
+                <Text style={styles.modalInfoTitle}>Pour toute assistance :</Text>
+                <View style={styles.modalContactRow}>
+                  <Ionicons name="call-outline" size={16} color={colors.atb.red} />
+                  <Text style={styles.modalContactText}> 71 143 000</Text>
+                </View>
+                <View style={styles.modalContactRow}>
+                  <Ionicons name="mail-outline" size={16} color={colors.atb.red} />
+                  <Text style={styles.modalContactText}> serviceclient@atb.com.tn</Text>
+                </View>
+                <View style={styles.modalContactRow}>
+                  <Ionicons name="business-outline" size={16} color={colors.atb.red} />
+                  <Text style={styles.modalContactText}> Agences ATB les plus proches</Text>
+                </View>
+              </View>
+            </ScrollView>
+            
+            <TouchableOpacity
+              style={styles.modalButton}
+              onPress={() => {
+                setBlockModalVisible(false);
+                handleGoToHome();
+              }}
+              activeOpacity={0.9}
+            >
+              <LinearGradient
+                colors={[colors.atb.red, colors.atb.red]}
+                style={styles.modalButtonGradient}
+              >
+                <Text style={styles.modalButtonText}>Retour à l'accueil</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       <Header />
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.flex}>
@@ -233,13 +323,9 @@ const FATCAScreen: React.FC<Props> = ({ navigation, route }) => {
 
             {/* Titre */}
             <View style={styles.titleSection}>
-              {/* pageNumber SUPPRIMÉ */}
               <Text style={styles.title}>{fromRecap ? 'Modifier la déclaration FATCA' : 'Déclaration FATCA'}</Text>
               <Text style={styles.subtitle}>Formulaire de conformité réglementaire</Text>
               
-              {/* progressContainer SUPPRIMÉ */}
-
-              {/* Indicateur de phase horizontal */}
               <View style={styles.phaseIndicatorWrapper}>
                 <PhaseIndicator currentPhase={currentPhase} />
               </View>
@@ -301,7 +387,12 @@ const FATCAScreen: React.FC<Props> = ({ navigation, route }) => {
                           <Text style={styles.questionText}>{question.question}</Text>
                         </View>
                         <View style={styles.answerContainer}>
-                          <TouchableOpacity style={styles.radioButton} onPress={() => handleAnswer(question.id, false)} activeOpacity={0.7}>
+                          <TouchableOpacity 
+                            style={styles.radioButton} 
+                            onPress={() => handleAnswer(question.id, false)} 
+                            activeOpacity={0.7}
+                            disabled={hasFatcaViolation()}
+                          >
                             <View style={styles.radioOuter}>
                               <View style={[styles.radioInner, question.value === false && styles.radioInnerSelected]}>
                                 {question.value === false && <View style={styles.radioDot} />}
@@ -309,7 +400,12 @@ const FATCAScreen: React.FC<Props> = ({ navigation, route }) => {
                             </View>
                             <Text style={[styles.radioLabel, question.value === false && styles.radioLabelSelected]}>Non</Text>
                           </TouchableOpacity>
-                          <TouchableOpacity style={styles.radioButton} onPress={() => handleAnswer(question.id, true)} activeOpacity={0.7}>
+                          <TouchableOpacity 
+                            style={styles.radioButton} 
+                            onPress={() => handleAnswer(question.id, true)} 
+                            activeOpacity={0.7}
+                            disabled={hasFatcaViolation()}
+                          >
                             <View style={styles.radioOuter}>
                               <View style={[styles.radioInner, question.value === true && styles.radioInnerSelected]}>
                                 {question.value === true && <View style={styles.radioDot} />}
@@ -339,7 +435,7 @@ const FATCAScreen: React.FC<Props> = ({ navigation, route }) => {
               <View style={styles.summaryCompact}>
                 {[
                   { label: 'Oui', count: yesCount, dotStyle: styles.summaryDotYes },
-                  { label: 'Non', count: noCount, dotStyle: styles.summaryDotNo },
+                  { label: 'Non', count: questions.filter(q => q.value === false).length, dotStyle: styles.summaryDotNo },
                   { label: 'En attente', count: pendingCount, dotStyle: styles.summaryDotPending, valueStyle: styles.summaryItemValuePending },
                 ].map(({ label, count, dotStyle, valueStyle }) => (
                   <View key={label} style={styles.summaryItemCompact}>
@@ -351,10 +447,12 @@ const FATCAScreen: React.FC<Props> = ({ navigation, route }) => {
                   </View>
                 ))}
               </View>
-              {yesCount > 0 ? (
-                <View style={[styles.statusBadge, styles.statusBadgeWarning]}>
-                  <Ionicons name="warning" size={14} color={colors.status.warning} />
-                  <Text style={styles.statusBadgeText}>{yesCount} réponse(s) nécessite(nt) vérification</Text>
+              {hasFatcaViolation() ? (
+                <View style={[styles.statusBadge, styles.statusBadgeBlocked]}>
+                  <Ionicons name="close-circle" size={14} color={colors.atb.red} />
+                  <Text style={[styles.statusBadgeText, styles.statusBadgeTextBlocked]}>
+                    ❌ Non-conformité détectée - Demande bloquée
+                  </Text>
                 </View>
               ) : !allQuestionsAnswered ? (
                 <View style={[styles.statusBadge, styles.statusBadgeInfo]}>
@@ -364,7 +462,7 @@ const FATCAScreen: React.FC<Props> = ({ navigation, route }) => {
               ) : (
                 <View style={[styles.statusBadge, styles.statusBadgeSuccess]}>
                   <Ionicons name="checkmark-circle" size={14} color={colors.status.success} />
-                  <Text style={styles.statusBadgeText}>Formulaire complet</Text>
+                  <Text style={styles.statusBadgeText}>Formulaire complet - Aucune non-conformité détectée</Text>
                 </View>
               )}
             </View>
@@ -377,7 +475,11 @@ const FATCAScreen: React.FC<Props> = ({ navigation, route }) => {
                     // @ts-ignore
                     navigation.navigate('Recapitulatif', { customerId });
                   } else {
-                    navigation.goBack();
+                    // @ts-ignore
+                    navigation.navigate('OnboardingPersonalData', {
+                      customerId,
+                      prefillData: formData,
+                    });
                   }
                 }}
                 style={styles.backButton}
@@ -389,15 +491,15 @@ const FATCAScreen: React.FC<Props> = ({ navigation, route }) => {
               <TouchableOpacity
                 onPress={handleContinue}
                 style={styles.continueButton}
-                disabled={!allQuestionsAnswered || isLoading}
+                disabled={!allQuestionsAnswered || isLoading || hasFatcaViolation()}
               >
                 <LinearGradient
-                  colors={allQuestionsAnswered && !isLoading ? [colors.atb.red, colors.atb.red] : [colors.neutral.gray300, colors.neutral.gray400]}
+                  colors={allQuestionsAnswered && !isLoading && !hasFatcaViolation() ? [colors.atb.red, colors.atb.red] : [colors.neutral.gray300, colors.neutral.gray400]}
                   style={styles.continueGradient}
                 >
                   <Ionicons name="document-text" size={18} color={colors.neutral.white} />
                   <Text style={styles.continueButtonText}>
-                    {isLoading ? 'Envoi...' : fromRecap ? ' Sauvegarder' : allQuestionsAnswered ? 'Soumettre et continuer' : 'Continuer'}
+                    {hasFatcaViolation() ? ' Demande bloquée' : isLoading ? 'Envoi...' : fromRecap ? ' Sauvegarder' : allQuestionsAnswered ? 'Soumettre et continuer' : 'Continuer'}
                   </Text>
                 </LinearGradient>
               </TouchableOpacity>
@@ -411,7 +513,7 @@ const FATCAScreen: React.FC<Props> = ({ navigation, route }) => {
   );
 };
 
-// ── Styles (avec ajout des styles pour PhaseIndicator) ──
+// ── Styles ────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.neutral.white },
   flex: { flex: 1 },
@@ -429,7 +531,6 @@ const styles = StyleSheet.create({
   scrollContent: { flexGrow: 1 },
   content: { padding: 24 }, 
 
-  // Styles pour PhaseIndicator (identique à OtpVerification)
   phaseIndicatorWrapper: { marginTop: 2 },
   phaseContainer: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingVertical: 8 },
   phaseItem: { alignItems: 'center', flex: 1 },
@@ -445,13 +546,8 @@ const styles = StyleSheet.create({
   phaseConnector: { width: 20, height: 2, backgroundColor: colors.neutral.gray300, alignSelf: 'center', marginTop: -10 },
 
   titleSection: { marginBottom: 20 },
-  // pageNumber SUPPRIMÉ
   title: { fontSize: 26, fontWeight: '700', color: colors.neutral.gray900, marginBottom: 6, letterSpacing: -0.3 },
   subtitle: { fontSize: 13, color: colors.neutral.gray600, fontWeight: '400', lineHeight: 19, marginBottom: 8 },
-  // progressContainer SUPPRIMÉ
-  // progressBarBackground SUPPRIMÉ
-  // progressBarFill SUPPRIMÉ
-  // progressText SUPPRIMÉ
 
   editBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(200,35,51,0.07)', borderWidth: 1, borderColor: 'rgba(200,35,51,0.2)', borderRadius: 10, padding: 14, marginBottom: 16 },
   editBannerText: { flex: 1, fontSize: 13, color: colors.atb.red, fontWeight: '500' },
@@ -506,7 +602,9 @@ const styles = StyleSheet.create({
   statusBadgeWarning: { backgroundColor: colors.status.warningLight },
   statusBadgeInfo: { backgroundColor: colors.status.infoLight },
   statusBadgeSuccess: { backgroundColor: colors.status.successLight },
+  statusBadgeBlocked: { backgroundColor: 'rgba(200,35,51,0.08)', borderWidth: 1, borderColor: 'rgba(200,35,51,0.3)' },
   statusBadgeText: { fontSize: 12, fontWeight: '500', marginLeft: 6, color: colors.neutral.gray700 },
+  statusBadgeTextBlocked: { color: colors.atb.red, fontWeight: '600' },
   buttonContainer: { flexDirection: 'row', gap: 12, marginBottom: 32 },
   backButton: { flex: 1, height: 52, backgroundColor: colors.neutral.white, borderWidth: 1.5, borderColor: colors.neutral.gray300, borderRadius: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   backButtonText: { fontSize: 14, fontWeight: '700', color: colors.neutral.gray700, marginLeft: 8 },
@@ -519,6 +617,23 @@ const styles = StyleSheet.create({
   footerDividerChar: { fontSize: 10, color: colors.neutral.gray400 },
   footerText: { fontSize: 11, color: colors.neutral.gray500, fontWeight: '500', marginBottom: 4 },
   footerSubtext: { fontSize: 10, color: colors.neutral.gray400, fontWeight: '400' },
+
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  modalContainer: { width: '100%', maxWidth: 360, backgroundColor: colors.neutral.white, borderRadius: 20, overflow: 'hidden', shadowColor: colors.neutral.gray900, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 24, elevation: 12 },
+  modalHeader: { alignItems: 'center', paddingTop: 24, paddingHorizontal: 24 },
+  modalIconContainer: { width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(200,35,51,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  modalTitle: { fontSize: 20, fontWeight: '700', color: colors.atb.red, letterSpacing: -0.3 },
+  modalDivider: { height: 1, backgroundColor: colors.neutral.gray200, marginVertical: 16 },
+  modalScroll: { maxHeight: 400, paddingHorizontal: 24 },
+  modalMessage: { fontSize: 15, fontWeight: '500', color: colors.neutral.gray900, lineHeight: 22, marginBottom: 12, textAlign: 'center' },
+  modalSubMessage: { fontSize: 13, color: colors.neutral.gray600, lineHeight: 20, marginBottom: 20, textAlign: 'center' },
+  modalInfoBox: { backgroundColor: colors.neutral.gray50, borderRadius: 12, padding: 16, marginBottom: 8, borderWidth: 1, borderColor: colors.neutral.gray200 },
+  modalInfoTitle: { fontSize: 13, fontWeight: '700', color: colors.neutral.gray800, marginBottom: 12 },
+  modalContactRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  modalContactText: { fontSize: 13, color: colors.neutral.gray700, marginLeft: 8 },
+  modalButton: { margin: 20, borderRadius: 12, overflow: 'hidden' },
+  modalButtonGradient: { paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
+  modalButtonText: { fontSize: 16, fontWeight: '700', color: colors.neutral.white },
 });
 
 export default FATCAScreen;

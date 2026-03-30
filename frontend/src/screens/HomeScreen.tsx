@@ -141,15 +141,17 @@ const HomeScreen = () => {
     navigation.navigate('EligibilityConditions');
   };
 
-  const navigateBack = () => {
-    navigation.goBack();
+  // ✅ Correction du goBack : redirection stricte vers OnboardingHome
+  const handleGoBack = () => {
+    // @ts-ignore
+    navigation.navigate('OnboardingHome');
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.neutral.gray100} />
       
-      {/* Header identique au code 1 avec flèche de retour à droite */}
+      {/* Header avec flèche de retour */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <View style={styles.logoContainer}>
@@ -169,7 +171,7 @@ const HomeScreen = () => {
             <Text style={styles.bankSubtitle}>البنك العربي التونسي</Text>
           </View>
         </View>
-        <TouchableOpacity onPress={navigateBack} style={styles.backButton}>
+        <TouchableOpacity onPress={handleGoBack} style={styles.backButton}>
           <Feather name="arrow-left" size={24} color={colors.atb.primary} />
         </TouchableOpacity>
       </View>
@@ -178,7 +180,7 @@ const HomeScreen = () => {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Le reste du code reste exactement le même */}
+        {/* Hero Section */}
         <RNAnimated.View
           style={[
             styles.heroSection,
@@ -219,26 +221,24 @@ const HomeScreen = () => {
               </Text>
 
               <View style={styles.buttonContainer}>
-               
-
-{/* BOUTON E-HOUWIYA */}
-<TouchableOpacity 
-  style={styles.primaryButton}
-  activeOpacity={0.9}
-  onPress={() => {
-    // @ts-ignore
-    navigation.navigate('EHouwiyaWebView');
-  }}
->
-  <LinearGradient
-    colors={[colors.atb.accent, colors.atb.gold]}
-    style={styles.primaryButtonGradient}
-  >
-    <MaterialCommunityIcons name="shield-account" size={20} color={colors.neutral.white} />
-    <Text style={styles.primaryButtonText}>Commencer avec E-Houwiya</Text>
-    <AntDesign name="arrow-right" size={16} color={colors.neutral.white} />
-  </LinearGradient>
-</TouchableOpacity>
+                {/* BOUTON E-HOUWIYA */}
+                <TouchableOpacity 
+                  style={styles.primaryButton}
+                  activeOpacity={0.9}
+                  onPress={() => {
+                    // @ts-ignore
+                    navigation.navigate('EHouwiyaWebView');
+                  }}
+                >
+                  <LinearGradient
+                    colors={[colors.atb.accent, colors.atb.gold]}
+                    style={styles.primaryButtonGradient}
+                  >
+                    <MaterialCommunityIcons name="shield-account" size={20} color={colors.neutral.white} />
+                    <Text style={styles.primaryButtonText}>Commencer avec E-Houwiya</Text>
+                    <AntDesign name="arrow-right" size={16} color={colors.neutral.white} />
+                  </LinearGradient>
+                </TouchableOpacity>
 
                 <TouchableOpacity 
                   style={styles.secondaryButton}
@@ -517,7 +517,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.neutral.white,
   },
-  // Header style du code 1 avec flèche à droite
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -569,8 +568,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 40,
   },
-  
- 
   heroSection: {
     marginTop: 0,
   },
@@ -674,8 +671,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: 8,
   },
-
-  // Section Styles
   section: {
     paddingHorizontal: 20,
     paddingVertical: 32,
@@ -712,8 +707,6 @@ const styles = StyleSheet.create({
     marginBottom: 32,
     lineHeight: 28,
   },
-
-  // Card Styles
   card: {
     backgroundColor: colors.neutral.white,
     borderRadius: 20,
@@ -768,8 +761,6 @@ const styles = StyleSheet.create({
     color: colors.atb.red,
     marginRight: 8,
   },
-
-  // Steps
   stepsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -818,8 +809,6 @@ const styles = StyleSheet.create({
     color: colors.atb.red,
     fontWeight: '600',
   },
-
-  // Services
   servicesGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -888,7 +877,6 @@ const styles = StyleSheet.create({
     color: colors.neutral.gray700,
     marginLeft: 12,
   },
-  // ATB Pay
   atbPayCard: {
     borderRadius: 24,
     padding: 25,
@@ -952,8 +940,6 @@ const styles = StyleSheet.create({
     marginRight: 6,
     textTransform: 'uppercase',
   },
-
-  // FAQ
   faqContainer: {
     backgroundColor: colors.neutral.white,
     borderRadius: 20,
@@ -1026,8 +1012,6 @@ const styles = StyleSheet.create({
     color: colors.atb.red,
     marginLeft: 8,
   },
-
-  // ePay Card
   epayCard: {
     borderRadius: 24,
     overflow: 'hidden',
@@ -1098,8 +1082,6 @@ const styles = StyleSheet.create({
     color: colors.neutral.white,
     textAlign: 'center',
   },
-
-  // Footer
   footer: {
     alignItems: 'center',
     paddingVertical: 20,

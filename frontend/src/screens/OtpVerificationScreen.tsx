@@ -149,7 +149,7 @@ const OtpVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
       const code = res.devOnly_otp ?? '------';
       setCodeSent(true);
       Alert.alert(
-        isResend ? '🔄 Nouveau code généré' : '🔐 Code de vérification',
+        isResend ? '🔄 Nouveau code généré' : 'Code de vérification',
         `Votre code OTP est :\n\n${code}\n\nValide 10 minutes.`,
         [{ text: "OK, j'ai compris" }],
         { cancelable: false },

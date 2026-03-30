@@ -12,7 +12,13 @@ export type OcrFormData = {
   birthDate?:      string;
   idIssueDate?:    string;
   gender?:         string;
-  email?:          string;
+  nationality?:    string;
+  birthPlace?:     string;
+  countryOfBirth?: string;
+  countryOfResidence?: string;
+   phoneNumber?: string;
+  email?:       string;
+  
 };
 
 export type RootStackParamList = {

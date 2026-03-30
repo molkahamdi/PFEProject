@@ -4,7 +4,7 @@
 // ✅ PASSPORT : comparaison latin ↔ latin (lastNameLatin / firstNameLatin)
 // ✅ CIN_RECTO : comparaison arabe ↔ arabe (lastNameArabic / firstNameArabic)
 
-const BACKEND_URL = 'http://172.20.10.2:3000';
+const BACKEND_URL = 'http://192.168.0.238:3000';
 
 export type DocType     = 'CIN_RECTO' | 'CIN_VERSO' | 'PASSPORT';
 export type MatchStatus = 'MATCH' | 'PARTIAL' | 'MISMATCH' | 'UNVERIFIED';
@@ -20,6 +20,12 @@ export interface OcrFormData {
   birthDate?:     string;
   idIssueDate?:   string;
   gender?:        string;
+  nationality?:   string;
+  birthPlace?:    string;
+  countryOfBirth?: string;
+  countryOfResidence?: string;
+   phoneNumber?: string;
+  email?:       string;
 }
 
 export interface OcrScanResult {
