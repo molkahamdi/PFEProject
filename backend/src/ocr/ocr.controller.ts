@@ -23,7 +23,6 @@ export class OcrController {
    * Body : multipart/form-data
    *   - document  : fichier image (jpg/png)
    *   - docType   : CIN_RECTO | CIN_VERSO | PASSPORT
-   *   - customerId: string (optionnel)
    */
   @Post('scan')
   @UseInterceptors(FileInterceptor('document'))
