@@ -1,8 +1,7 @@
 // ============================================================
-//  frontend/screens/PersonalDataForm.tsx — VERSION FINALE
-//  ✅ Création normale | ✅ Modification fromRecap (pré-rempli)
-//  ✅ Style original conservé (sections, dropdowns, calendrier)
-//  ✅ Indicateur de phase horizontal (phase 1 - Données personnelles)
+//  frontend/screens/PersonalDataForm.tsx
+//  ✅ FCM RISK : toujours réponse statique LR → passe toujours
+//  ✅ loadingStep affiche la progression à l'utilisateur
 // ============================================================
 import React, { useState, useEffect } from 'react';
 import {
@@ -15,15 +14,18 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import CustomDropdown from '../components/common/CustomDropdown';
 import colors from '../../constants/colors';
-import { savePersonalForm, updateCustomer, getCustomer } from '../services/customerApi';
+import {
+  savePersonalForm,
+  updateCustomer,
+  getCustomer,
+  verifyRisk,
+} from '../services/customerApi';
 
-// ── Types ────────────────────────────────────────────────────
 type NavigationProp = { goBack: () => void; navigate: (screen: string, params?: object) => void; };
 type PersonalDataFormProps = {
   navigation: NavigationProp;
   route: { params: { customerId: string; fromRecap?: boolean } };
 };
-
 type FormData = {
   pays: string; gouvernorat: string; delegation: string; codePostal: string;
   adresse: string; adresseSuite: string; situationProfessionnelle: string;
@@ -31,10 +33,8 @@ type FormData = {
   employeur: string; entreprise: string; revenuMensuel: string;
   agenceDattachement: string; gouvernoratAgence: string; agence: string;
 };
-
 type DropdownOption = { label: string; value: string };
 
-// ── Constantes ───────────────────────────────────────────────
 const GOUVERNORATS: DropdownOption[] = [
   'Tunis','Ariana','Ben Arous','Manouba','Nabeul','Zaghouan','Bizerte','Béja',
   'Jendouba','Kef','Siliana','Kairouan','Kasserine','Sidi Bouzid','Sousse',
@@ -71,10 +71,9 @@ const AGENCES: DropdownOption[] = [
 ].map(a => ({ label: a, value: a }));
 
 const SITUATIONS_SANS_PROFESSION = ['Etudiant','Femme au foyer','Sans emploi'];
-const SITUATIONS_SANS_EMPLOI = ['Etudiant','Femme au foyer','Retraité','Sans emploi'];
-
+const SITUATIONS_SANS_EMPLOI     = ['Etudiant','Femme au foyer','Retraité','Sans emploi'];
 const WEEK_DAYS = ['Lu','Ma','Me','Je','Ve','Sa','Di'];
-const MONTHS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+const MONTHS    = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
 const INITIAL_FORM: FormData = {
   pays: 'Tunisie', gouvernorat: '', delegation: '', codePostal: '',
@@ -84,7 +83,6 @@ const INITIAL_FORM: FormData = {
   agenceDattachement: '', gouvernoratAgence: '', agence: '',
 };
 
-// ── PhaseIndicator HORIZONTAL (identique aux autres écrans) ────
 const PhaseIndicator: React.FC<{ currentPhase: number }> = ({ currentPhase }) => {
   const phases = [
     { id: 1, label: 'Données personnelles' },
@@ -93,31 +91,17 @@ const PhaseIndicator: React.FC<{ currentPhase: number }> = ({ currentPhase }) =>
     { id: 4, label: 'Envoi de la demande' },
     { id: 5, label: 'Signature éléctronique' },
   ];
-
   return (
     <View style={styles.phaseContainer}>
       {phases.map((phase, index) => (
         <React.Fragment key={phase.id}>
           <View style={styles.phaseItem}>
-            <View style={[
-              styles.phaseRadioOuter,
-              phase.id < currentPhase && styles.phaseRadioCompleted,
-              phase.id === currentPhase && styles.phaseRadioActive
-            ]}>
-              {phase.id < currentPhase ? (
-                <Text style={styles.phaseRadioCheck}>✓</Text>
-              ) : (
-                <View style={[
-                  styles.phaseRadioInner,
-                  phase.id === currentPhase && styles.phaseRadioInnerActive
-                ]} />
-              )}
+            <View style={[styles.phaseRadioOuter, phase.id < currentPhase && styles.phaseRadioCompleted, phase.id === currentPhase && styles.phaseRadioActive]}>
+              {phase.id < currentPhase
+                ? <Text style={styles.phaseRadioCheck}>✓</Text>
+                : <View style={[styles.phaseRadioInner, phase.id === currentPhase && styles.phaseRadioInnerActive]} />}
             </View>
-            <Text style={[
-              styles.phaseLabel,
-              phase.id === currentPhase && styles.phaseLabelActive,
-              phase.id < currentPhase && styles.phaseLabelCompleted
-            ]}>
+            <Text style={[styles.phaseLabel, phase.id === currentPhase && styles.phaseLabelActive, phase.id < currentPhase && styles.phaseLabelCompleted]}>
               {phase.label}
             </Text>
           </View>
@@ -128,7 +112,6 @@ const PhaseIndicator: React.FC<{ currentPhase: number }> = ({ currentPhase }) =>
   );
 };
 
-// ── Sous-composants ──────────────────────────────────────────
 const Header: React.FC = () => (
   <View style={styles.header}>
     <View style={styles.headerLeft}>
@@ -150,9 +133,7 @@ const Header: React.FC = () => (
 
 const SectionHeader: React.FC<{ number: string; title: string; description: string }> = ({ number, title, description }) => (
   <View style={styles.sectionHeader}>
-    <View style={styles.sectionNumberWrapper}>
-      <Text style={styles.sectionNumber}>{number}</Text>
-    </View>
+    <View style={styles.sectionNumberWrapper}><Text style={styles.sectionNumber}>{number}</Text></View>
     <View style={styles.sectionTitleWrapper}>
       <Text style={styles.sectionTitle}>{title}</Text>
       <Text style={styles.sectionDescription}>{description}</Text>
@@ -160,7 +141,8 @@ const SectionHeader: React.FC<{ number: string; title: string; description: stri
   </View>
 );
 
-const FieldHeader: React.FC<{ icon: keyof typeof Ionicons.glyphMap; label: string; required?: boolean; optional?: boolean }> = ({ icon, label, required = false, optional = false }) => (
+const FieldHeader: React.FC<{ icon: keyof typeof Ionicons.glyphMap; label: string; required?: boolean; optional?: boolean }> =
+  ({ icon, label, required = false, optional = false }) => (
   <View style={styles.fieldHeader}>
     <Ionicons name={icon} size={14} color={required ? colors.atb.red : colors.neutral.gray500} />
     <Text style={[styles.fieldLabel, optional && styles.optionalLabel]}>{label}</Text>
@@ -176,27 +158,22 @@ const Footer: React.FC = () => (
   </View>
 );
 
-// ── Composant principal ──────────────────────────────────────
 const PersonalDataForm: React.FC<PersonalDataFormProps> = ({ navigation, route }) => {
   const { customerId } = route.params;
   const fromRecap = route.params?.fromRecap ?? false;
 
-  // Phase actuelle (toujours 1 pour cet écran - Données personnelles)
-  const currentPhase = 1;
-
   const [isLoading, setIsLoading]   = useState(false);
+  const [loadingStep, setLoadingStep] = useState('');
   const [isFetching, setIsFetching] = useState(false);
   const [formData, setFormData]     = useState<FormData>(INITIAL_FORM);
   const [showProfessionalFields, setShowProfessionalFields] = useState(false);
   const [showProfessionField, setShowProfessionField]       = useState(true);
 
-  // Calendrier date d'embauche
   const [datePickerVisible, setDatePickerVisible] = useState(false);
-  const [selectedYear, setSelectedYear]   = useState(new Date().getFullYear());
+  const [selectedYear,  setSelectedYear]  = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
-  const [selectedDay, setSelectedDay]     = useState(new Date().getDate());
+  const [selectedDay,   setSelectedDay]   = useState(new Date().getDate());
 
-  // ── Chargement données existantes ────────────────────────
   useEffect(() => {
     if (fromRecap) {
       setIsFetching(true);
@@ -204,24 +181,16 @@ const PersonalDataForm: React.FC<PersonalDataFormProps> = ({ navigation, route }
         .then((data: any) => {
           const situation = data.situationProfessionnelle || '';
           setFormData({
-            pays:                     data.pays                    || 'Tunisie',
-            gouvernorat:              data.gouvernorat             || '',
-            delegation:               data.delegation              || '',
-            codePostal:               data.codePostal              || '',
-            adresse:                  data.adresse                 || '',
-            adresseSuite:             data.adresseSuite            || '',
-            situationProfessionnelle: situation,
-            profession:               data.profession              || '',
-            posteActuel:              data.posteActuel             || '',
-            dateEmbauche:             data.dateEmbauche            || '',
-            employeur:                data.employeur               || '',
-            entreprise:               data.entreprise              || '',
-            revenuMensuel:            data.revenuMensuel ? String(data.revenuMensuel) : '',
-            agenceDattachement:       data.agenceDattachement      || '',
-            gouvernoratAgence:        data.gouvernoratAgence       || '',
-            agence:                   data.agence                  || '',
+            pays: data.pays || 'Tunisie', gouvernorat: data.gouvernorat || '',
+            delegation: data.delegation || '', codePostal: data.codePostal || '',
+            adresse: data.adresse || '', adresseSuite: data.adresseSuite || '',
+            situationProfessionnelle: situation, profession: data.profession || '',
+            posteActuel: data.posteActuel || '', dateEmbauche: data.dateEmbauche || '',
+            employeur: data.employeur || '', entreprise: data.entreprise || '',
+            revenuMensuel: data.revenuMensuel ? String(data.revenuMensuel) : '',
+            agenceDattachement: data.agenceDattachement || '',
+            gouvernoratAgence: data.gouvernoratAgence || '', agence: data.agence || '',
           });
-          // Restaurer la visibilité des champs selon la situation
           setShowProfessionField(!SITUATIONS_SANS_PROFESSION.includes(situation));
           setShowProfessionalFields(!SITUATIONS_SANS_EMPLOI.includes(situation));
         })
@@ -230,23 +199,21 @@ const PersonalDataForm: React.FC<PersonalDataFormProps> = ({ navigation, route }
     }
   }, []);
 
-  // ── Calendrier ───────────────────────────────────────────
-  const formatDate = (day: number, month: number, year: number): string =>
-    `${day.toString().padStart(2,'0')}/${(month + 1).toString().padStart(2,'0')}/${year}`;
+  const formatDate = (d: number, m: number, y: number) =>
+    `${d.toString().padStart(2,'0')}/${(m+1).toString().padStart(2,'0')}/${y}`;
 
   const openDatePicker = () => {
-    const existing = formData.dateEmbauche;
-    if (existing) {
-      const [d, m, y] = existing.split('/');
-      const parsed = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
-      if (!isNaN(parsed.getTime())) {
-        setSelectedDay(parseInt(d)); setSelectedMonth(parseInt(m) - 1); setSelectedYear(parseInt(y));
-        setDatePickerVisible(true);
-        return;
+    const ex = formData.dateEmbauche;
+    if (ex) {
+      const [d, m, y] = ex.split('/');
+      const p = new Date(parseInt(y), parseInt(m)-1, parseInt(d));
+      if (!isNaN(p.getTime())) {
+        setSelectedDay(parseInt(d)); setSelectedMonth(parseInt(m)-1); setSelectedYear(parseInt(y));
+        setDatePickerVisible(true); return;
       }
     }
-    const today = new Date();
-    setSelectedDay(today.getDate()); setSelectedMonth(today.getMonth()); setSelectedYear(today.getFullYear());
+    const t = new Date();
+    setSelectedDay(t.getDate()); setSelectedMonth(t.getMonth()); setSelectedYear(t.getFullYear());
     setDatePickerVisible(true);
   };
 
@@ -255,54 +222,39 @@ const PersonalDataForm: React.FC<PersonalDataFormProps> = ({ navigation, route }
     setDatePickerVisible(false);
   };
 
-  const changeMonth = (direction: 'prev' | 'next') => {
-    if (direction === 'prev') {
-      if (selectedMonth === 0) { setSelectedMonth(11); setSelectedYear(y => y - 1); }
-      else setSelectedMonth(m => m - 1);
+  const changeMonth = (dir: 'prev'|'next') => {
+    if (dir === 'prev') {
+      if (selectedMonth === 0) { setSelectedMonth(11); setSelectedYear(y => y-1); }
+      else setSelectedMonth(m => m-1);
     } else {
-      if (selectedMonth === 11) { setSelectedMonth(0); setSelectedYear(y => y + 1); }
-      else setSelectedMonth(m => m + 1);
+      if (selectedMonth === 11) { setSelectedMonth(0); setSelectedYear(y => y+1); }
+      else setSelectedMonth(m => m+1);
     }
   };
 
   const generateCalendarDays = () => {
     const firstDay = new Date(selectedYear, selectedMonth, 1).getDay();
-    const adjustedFirstDay = firstDay === 0 ? 6 : firstDay - 1;
-    const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
-    const prevMonthDays = new Date(selectedYear, selectedMonth, 0).getDate();
+    const adj = firstDay === 0 ? 6 : firstDay - 1;
+    const dim = new Date(selectedYear, selectedMonth+1, 0).getDate();
+    const prev = new Date(selectedYear, selectedMonth, 0).getDate();
     const days: { day: number; isCurrentMonth: boolean; date: Date }[] = [];
-    for (let i = 0; i < adjustedFirstDay; i++) {
-      const day = prevMonthDays - adjustedFirstDay + i + 1;
-      days.push({ day, isCurrentMonth: false, date: new Date(selectedYear, selectedMonth - 1, day) });
-    }
-    for (let i = 1; i <= daysInMonth; i++) {
-      days.push({ day: i, isCurrentMonth: true, date: new Date(selectedYear, selectedMonth, i) });
-    }
-    const remaining = 42 - days.length;
-    for (let i = 1; i <= remaining; i++) {
-      days.push({ day: i, isCurrentMonth: false, date: new Date(selectedYear, selectedMonth + 1, i) });
-    }
+    for (let i = 0; i < adj; i++) { const d = prev-adj+i+1; days.push({ day: d, isCurrentMonth: false, date: new Date(selectedYear, selectedMonth-1, d) }); }
+    for (let i = 1; i <= dim; i++) days.push({ day: i, isCurrentMonth: true, date: new Date(selectedYear, selectedMonth, i) });
+    const rem = 42 - days.length;
+    for (let i = 1; i <= rem; i++) days.push({ day: i, isCurrentMonth: false, date: new Date(selectedYear, selectedMonth+1, i) });
     return days;
   };
-
   const calendarDays = generateCalendarDays();
 
-  // ── Handlers formulaire ──────────────────────────────────
   const updateFormData = (field: keyof FormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-
     if (field === 'situationProfessionnelle') {
       setShowProfessionField(!SITUATIONS_SANS_PROFESSION.includes(value));
       setShowProfessionalFields(!SITUATIONS_SANS_EMPLOI.includes(value));
-      setFormData(prev => ({
-        ...prev,
-        [field]: value,
-        profession: '', posteActuel: '', dateEmbauche: '',
-        employeur: '', entreprise: '', revenuMensuel: '',
-      }));
+      setFormData(prev => ({ ...prev, [field]: value, profession: '', posteActuel: '', dateEmbauche: '', employeur: '', entreprise: '', revenuMensuel: '' }));
       if (SITUATIONS_SANS_PROFESSION.includes(value)) {
-        const autoProfession = value === 'Sans emploi' ? "En recherche d'emploi" : value;
-        setFormData(prev => ({ ...prev, [field]: value, profession: autoProfession }));
+        const auto = value === 'Sans emploi' ? "En recherche d'emploi" : value;
+        setFormData(prev => ({ ...prev, [field]: value, profession: auto }));
       }
     }
   };
@@ -312,24 +264,23 @@ const PersonalDataForm: React.FC<PersonalDataFormProps> = ({ navigation, route }
     return (DELEGATIONS[formData.gouvernorat] || []).map(d => ({ label: d, value: d }));
   };
 
-  // ── Validation ───────────────────────────────────────────
   const validateForm = (): boolean => {
-    const required: (keyof FormData)[] = ['gouvernorat', 'delegation', 'codePostal', 'adresse', 'situationProfessionnelle'];
+    const required: (keyof FormData)[] = ['gouvernorat','delegation','codePostal','adresse','situationProfessionnelle'];
     if (showProfessionField) required.push('profession');
-    if (showProfessionalFields) required.push('posteActuel', 'dateEmbauche', 'entreprise', 'revenuMensuel');
-    required.push('gouvernoratAgence', 'agence');
-    const missing = required.filter(f => !formData[f]);
-    if (missing.length > 0) {
+    if (showProfessionalFields) required.push('posteActuel','dateEmbauche','entreprise','revenuMensuel');
+    required.push('gouvernoratAgence','agence');
+    if (required.some(f => !formData[f])) {
       Alert.alert('Champs manquants', 'Veuillez remplir tous les champs obligatoires (*).');
       return false;
     }
     return true;
   };
 
-  // ── Soumission ───────────────────────────────────────────
+  // ── handleContinue — flux complet ────────────────────────
   const handleContinue = async () => {
     if (!validateForm()) return;
     setIsLoading(true);
+
     try {
       const payload = {
         pays: formData.pays, gouvernorat: formData.gouvernorat,
@@ -343,23 +294,43 @@ const PersonalDataForm: React.FC<PersonalDataFormProps> = ({ navigation, route }
         gouvernoratAgence: formData.gouvernoratAgence, agence: formData.agence,
       };
 
+      // ── MODE MODIFICATION ─────────────────────────────────
       if (fromRecap) {
-        // ✅ MODE MODIFICATION
+        setLoadingStep('Sauvegarde...');
         await updateCustomer(customerId, payload);
         Alert.alert('✅ Données mises à jour', 'Vos informations ont été sauvegardées.', [
-          { text: 'Retour au récapitulatif', onPress: () => {
-            navigation.navigate('Recapitulatif', { customerId });
-          }},
+          { text: 'Retour au récapitulatif', onPress: () => navigation.navigate('Recapitulatif', { customerId }) },
         ]);
-      } else {
-        // ✅ MODE CRÉATION
-        const result = await savePersonalForm(customerId, payload);
-        navigation.navigate('Recapitulatif', { customerId: result.id });
+        return;
       }
+
+      // ── ÉTAPE 1 : sauvegarder le formulaire personnel ─────
+      setLoadingStep('Enregistrement de vos données...');
+      const result = await savePersonalForm(customerId, payload);
+
+      // ── ÉTAPE 2 : évaluation du risque (FCM RISK) ─────────
+      // Toujours riskStatus=LR en mode statique → passe toujours
+      setLoadingStep('Évaluation du profil...');
+      const riskCheck = await verifyRisk(customerId);
+
+      if (!riskCheck.success) {
+        Alert.alert(
+          'Demande non autorisée',
+          riskCheck.message,
+          [{ text: 'Compris' }],
+        );
+        return;
+      }
+
+      // ── ÉTAPE 3 : récapitulatif ────────────────────────────
+      setLoadingStep('Finalisation...');
+      navigation.navigate('Recapitulatif', { customerId: result.id });
+
     } catch (error: any) {
-      Alert.alert('Erreur', error.message || 'Erreur lors de la soumission du dossier.');
+      Alert.alert('Erreur de connexion', error.message || 'Impossible de contacter le serveur. Vérifiez votre connexion.');
     } finally {
       setIsLoading(false);
+      setLoadingStep('');
     }
   };
 
@@ -376,18 +347,13 @@ const PersonalDataForm: React.FC<PersonalDataFormProps> = ({ navigation, route }
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.neutral.white} />
 
-      {/* ── MODAL CALENDRIER ── */}
       <Modal visible={datePickerVisible} transparent animationType="fade" onRequestClose={() => setDatePickerVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.calendarHeader}>
-              <TouchableOpacity style={styles.monthNavButton} onPress={() => changeMonth('prev')}>
-                <Text style={styles.monthNavText}>←</Text>
-              </TouchableOpacity>
+              <TouchableOpacity style={styles.monthNavButton} onPress={() => changeMonth('prev')}><Text style={styles.monthNavText}>←</Text></TouchableOpacity>
               <Text style={styles.monthYearText}>{MONTHS[selectedMonth]} {selectedYear}</Text>
-              <TouchableOpacity style={styles.monthNavButton} onPress={() => changeMonth('next')}>
-                <Text style={styles.monthNavText}>→</Text>
-              </TouchableOpacity>
+              <TouchableOpacity style={styles.monthNavButton} onPress={() => changeMonth('next')}><Text style={styles.monthNavText}>→</Text></TouchableOpacity>
             </View>
             <View style={styles.weekDaysContainer}>
               {WEEK_DAYS.map((day, i) => <Text key={i} style={styles.weekDayText}>{day}</Text>)}
@@ -427,29 +393,19 @@ const PersonalDataForm: React.FC<PersonalDataFormProps> = ({ navigation, route }
         <ScrollView style={styles.flex} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           <View style={styles.content}>
 
-            {/* ── Titre ── */}
             <View style={styles.titleSection}>
-              {/* pageNumber SUPPRIMÉ */}
               <Text style={styles.title}>{fromRecap ? "Modifier l'adresse & profession" : 'Données personnelles'}</Text>
               <Text style={styles.subtitle}>Complétez vos informations personnelles et choisissez votre agence</Text>
-              
-              {/* progressContainer SUPPRIMÉ */}
-
-              {/* Indicateur de phase horizontal */}
-              <View style={styles.phaseIndicatorWrapper}>
-                <PhaseIndicator currentPhase={currentPhase} />
-              </View>
+              <View style={styles.phaseIndicatorWrapper}><PhaseIndicator currentPhase={1} /></View>
             </View>
 
-            {/* Bannière modification */}
             {fromRecap && (
               <View style={styles.editBanner}>
-                
                 <Text style={styles.editBannerText}>Mode modification — Vos données précédentes sont pré-remplies.</Text>
               </View>
             )}
 
-            {/* ── SECTION 1 : Adresse ── */}
+            {/* SECTION 1 : Adresse */}
             <View style={styles.sectionCard}>
               <SectionHeader number="1" title="Adresse de résidence" description="Votre adresse actuelle en Tunisie" />
               <View style={styles.formGrid}>
@@ -472,43 +428,48 @@ const PersonalDataForm: React.FC<PersonalDataFormProps> = ({ navigation, route }
                 <View style={[styles.fieldGroup, styles.fullWidth]}>
                   <FieldHeader icon="home-outline" label="Adresse complète" required />
                   <View style={styles.textInputContainer}>
-                    <TextInput style={styles.textInput} placeholder="Numéro, rue, appartement..." placeholderTextColor={colors.neutral.gray400} value={formData.adresse} onChangeText={v => updateFormData('adresse', v)} selectionColor={colors.atb.red} />
+                    <TextInput style={styles.textInput} placeholder="Numéro, rue, appartement..."
+                      placeholderTextColor={colors.neutral.gray400} value={formData.adresse}
+                      onChangeText={v => updateFormData('adresse', v)} selectionColor={colors.atb.red} />
                   </View>
                 </View>
                 <View style={[styles.fieldGroup, styles.fullWidth]}>
                   <FieldHeader icon="add-circle-outline" label="Complément d'adresse" optional />
                   <View style={styles.textInputContainer}>
-                    <TextInput style={styles.textInput} placeholder="Bâtiment, étage, porte..." placeholderTextColor={colors.neutral.gray400} value={formData.adresseSuite} onChangeText={v => updateFormData('adresseSuite', v)} selectionColor={colors.atb.red} />
+                    <TextInput style={styles.textInput} placeholder="Bâtiment, étage, porte..."
+                      placeholderTextColor={colors.neutral.gray400} value={formData.adresseSuite}
+                      onChangeText={v => updateFormData('adresseSuite', v)} selectionColor={colors.atb.red} />
                   </View>
                 </View>
               </View>
             </View>
 
-            {/* ── SECTION 2 : Profession ── */}
+            {/* SECTION 2 : Profession */}
             <View style={styles.sectionCard}>
               <SectionHeader number="2" title="Situation professionnelle" description="Informations sur votre activité" />
               <View style={styles.formGrid}>
                 <View style={[styles.fieldGroup, styles.fullWidth]}>
                   <FieldHeader icon="briefcase-outline" label="Situation actuelle" required />
-                  <CustomDropdown label="" value={formData.situationProfessionnelle} options={SITUATIONS_PROFESSIONNELLES} onSelect={v => updateFormData('situationProfessionnelle', v)} required={false} placeholder="Sélectionner votre situation" />
+                  <CustomDropdown label="" value={formData.situationProfessionnelle} options={SITUATIONS_PROFESSIONNELLES}
+                    onSelect={v => updateFormData('situationProfessionnelle', v)} required={false} placeholder="Sélectionner votre situation" />
                 </View>
-
                 {showProfessionField && (
                   <View style={[styles.fieldGroup, styles.fullWidth]}>
                     <FieldHeader icon="school-outline" label="Profession" required />
-                    <CustomDropdown label="" value={formData.profession} options={PROFESSIONS} onSelect={v => updateFormData('profession', v)} required={false} placeholder="Sélectionner votre profession" />
+                    <CustomDropdown label="" value={formData.profession} options={PROFESSIONS}
+                      onSelect={v => updateFormData('profession', v)} required={false} placeholder="Sélectionner votre profession" />
                   </View>
                 )}
-
                 {showProfessionalFields && (
                   <>
                     <View style={[styles.fieldGroup, styles.fullWidth]}>
                       <FieldHeader icon="person-outline" label="Poste actuel" required />
                       <View style={styles.textInputContainer}>
-                        <TextInput style={styles.textInput} placeholder="Ex: Développeur Full Stack" placeholderTextColor={colors.neutral.gray400} value={formData.posteActuel} onChangeText={v => updateFormData('posteActuel', v)} selectionColor={colors.atb.red} />
+                        <TextInput style={styles.textInput} placeholder="Ex: Développeur Full Stack"
+                          placeholderTextColor={colors.neutral.gray400} value={formData.posteActuel}
+                          onChangeText={v => updateFormData('posteActuel', v)} selectionColor={colors.atb.red} />
                       </View>
                     </View>
-                    {/* Date d'embauche avec calendrier */}
                     <View style={[styles.fieldGroup, styles.fullWidth]}>
                       <FieldHeader icon="calendar-outline" label="Date d'embauche" required />
                       <TouchableOpacity style={styles.dateInputTouchable} onPress={openDatePicker} activeOpacity={0.7}>
@@ -522,49 +483,53 @@ const PersonalDataForm: React.FC<PersonalDataFormProps> = ({ navigation, route }
                         </View>
                       </TouchableOpacity>
                     </View>
-
                     <View style={[styles.fieldGroup, styles.fullWidth]}>
                       <FieldHeader icon="business-outline" label="Entreprise" required />
                       <View style={styles.textInputContainer}>
-                        <TextInput style={styles.textInput} placeholder="Nom de l'entreprise" placeholderTextColor={colors.neutral.gray400} value={formData.entreprise} onChangeText={v => updateFormData('entreprise', v)} selectionColor={colors.atb.red} />
+                        <TextInput style={styles.textInput} placeholder="Nom de l'entreprise"
+                          placeholderTextColor={colors.neutral.gray400} value={formData.entreprise}
+                          onChangeText={v => updateFormData('entreprise', v)} selectionColor={colors.atb.red} />
                       </View>
                     </View>
-
                     <View style={[styles.fieldGroup, styles.fullWidth]}>
                       <FieldHeader icon="cash-outline" label="Revenu mensuel net" required />
                       <View style={styles.currencyInputContainer}>
                         <Text style={styles.currencySymbol}>DT</Text>
-                        <TextInput style={styles.currencyInput} placeholder="0,00" placeholderTextColor={colors.neutral.gray400} value={formData.revenuMensuel} onChangeText={v => updateFormData('revenuMensuel', v)} keyboardType="numeric" selectionColor={colors.atb.red} />
+                        <TextInput style={styles.currencyInput} placeholder="0,00"
+                          placeholderTextColor={colors.neutral.gray400} value={formData.revenuMensuel}
+                          onChangeText={v => updateFormData('revenuMensuel', v)}
+                          keyboardType="numeric" selectionColor={colors.atb.red} />
                       </View>
                     </View>
                   </>
                 )}
-
                 {!showProfessionalFields && formData.situationProfessionnelle && (
                   <View style={styles.infoCard}>
                     <Ionicons name="information-circle-outline" size={20} color={colors.atb.red} />
                     <Text style={styles.infoText}>
-                      {formData.situationProfessionnelle === 'Etudiant' ? "Vous êtes étudiant. Les champs d'emploi ne sont pas requis." :
-                       formData.situationProfessionnelle === 'Femme au foyer' ? "Vous êtes femme au foyer. Les champs d'emploi ne sont pas requis." :
-                       formData.situationProfessionnelle === 'Retraité' ? "Vous êtes retraité. Les champs d'emploi ne sont pas requis." :
-                       "Vous êtes en recherche d'emploi. Les champs d'emploi ne sont pas requis."}
+                      {formData.situationProfessionnelle === 'Etudiant' ? "Vous êtes étudiant. Les champs d'emploi ne sont pas requis."
+                        : formData.situationProfessionnelle === 'Femme au foyer' ? "Vous êtes femme au foyer. Les champs d'emploi ne sont pas requis."
+                        : formData.situationProfessionnelle === 'Retraité' ? "Vous êtes retraité. Les champs d'emploi ne sont pas requis."
+                        : "Vous êtes en recherche d'emploi. Les champs d'emploi ne sont pas requis."}
                     </Text>
                   </View>
                 )}
               </View>
             </View>
 
-            {/* ── SECTION 3 : Agence ── */}
+            {/* SECTION 3 : Agence */}
             <View style={styles.sectionCard}>
               <SectionHeader number="3" title="Agence de rattachement" description="Votre agence ATB de référence" />
               <View style={styles.formGrid}>
                 <View style={[styles.fieldGroup, styles.fullWidth]}>
                   <FieldHeader icon="business-outline" label="Gouvernorat de l'agence" required />
-                  <CustomDropdown label="" value={formData.gouvernoratAgence} options={GOUVERNORATS} onSelect={v => updateFormData('gouvernoratAgence', v)} required={false} placeholder="Sélectionner le gouvernorat" />
+                  <CustomDropdown label="" value={formData.gouvernoratAgence} options={GOUVERNORATS}
+                    onSelect={v => updateFormData('gouvernoratAgence', v)} required={false} placeholder="Sélectionner le gouvernorat" />
                 </View>
                 <View style={[styles.fieldGroup, styles.fullWidth]}>
                   <FieldHeader icon="ban-outline" label="Agence ATB" required />
-                  <CustomDropdown label="" value={formData.agence} options={AGENCES} onSelect={v => updateFormData('agence', v)} required={false} placeholder="Sélectionner votre agence" />
+                  <CustomDropdown label="" value={formData.agence} options={AGENCES}
+                    onSelect={v => updateFormData('agence', v)} required={false} placeholder="Sélectionner votre agence" />
                 </View>
               </View>
               <View style={styles.securityCard}>
@@ -579,27 +544,16 @@ const PersonalDataForm: React.FC<PersonalDataFormProps> = ({ navigation, route }
             {/* Boutons */}
             <View style={styles.actionsContainer}>
               <TouchableOpacity
-                onPress={() => {
-                  if (fromRecap) {
-                    navigation.navigate('Recapitulatif', { customerId });
-                  } else {
-                    navigation.goBack();
-                  }
-                }}
-                style={styles.backButton}
-              >
+                onPress={() => fromRecap ? navigation.navigate('Recapitulatif', { customerId }) : navigation.goBack()}
+                style={styles.backButton}>
                 <Ionicons name="arrow-back" size={18} color={colors.atb.red} />
                 <Text style={styles.backButtonText}>{fromRecap ? 'Annuler' : 'Retour'}</Text>
               </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={handleContinue}
-                style={[styles.continueButton, isLoading && { opacity: 0.7 }]}
-                disabled={isLoading}
-              >
+              <TouchableOpacity onPress={handleContinue} style={[styles.continueButton, isLoading && { opacity: 0.7 }]} disabled={isLoading}>
                 <LinearGradient colors={[colors.atb.red, colors.atb.red]} style={styles.continueGradient}>
+                  {isLoading && <ActivityIndicator size="small" color={colors.neutral.white} style={{ marginRight: 8 }} />}
                   <Text style={styles.continueButtonText}>
-                    {isLoading ? 'Envoi en cours...' : fromRecap ? 'Sauvegarder' : 'Continuer'}
+                    {isLoading ? (loadingStep || 'Traitement...') : (fromRecap ? 'Sauvegarder' : 'Continuer')}
                   </Text>
                   {!isLoading && !fromRecap && <Ionicons name="arrow-forward" size={18} color={colors.neutral.white} />}
                 </LinearGradient>
@@ -630,8 +584,6 @@ const styles = StyleSheet.create({
   bankSubtitle: { fontSize: 11, color: colors.neutral.gray500, marginTop: 2 },
   digipackBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 4 },
   digipackText: { fontSize: 10, fontWeight: '800', color: colors.neutral.white, letterSpacing: 2 },
-
-  // Styles pour PhaseIndicator
   phaseIndicatorWrapper: { marginTop: 2 },
   phaseContainer: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingVertical: 8 },
   phaseItem: { alignItems: 'center', flex: 1 },
@@ -646,13 +598,9 @@ const styles = StyleSheet.create({
   phaseLabelCompleted: { color: colors.neutral.gray800, fontWeight: '600' },
   phaseConnector: { width: 20, height: 2, backgroundColor: colors.neutral.gray300, alignSelf: 'center', marginTop: -10 },
   titleSection: { marginBottom: 12 },
-  // pageNumber SUPPRIMÉ
   title: { fontSize: 24, fontWeight: '700', color: colors.neutral.gray900, marginBottom: 4 },
   subtitle: { fontSize: 14, color: colors.neutral.gray600, lineHeight: 20, marginBottom: 10 },
-  
-
   editBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(200,35,51,0.07)', borderWidth: 1, borderColor: 'rgba(200,35,51,0.2)', borderRadius: 10, padding: 14, marginBottom: 16 },
-  editBannerIcon: { fontSize: 18 },
   editBannerText: { flex: 1, fontSize: 13, color: colors.atb.red, fontWeight: '500' },
   sectionCard: { backgroundColor: colors.neutral.white, borderRadius: 16, marginBottom: 16, padding: 20, shadowColor: colors.neutral.gray900, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 3, borderWidth: 1, borderColor: colors.neutral.beige },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 24, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.neutral.beige },
@@ -695,7 +643,6 @@ const styles = StyleSheet.create({
   footerDivider: { width: 40, height: 2, backgroundColor: colors.neutral.gray300, borderRadius: 1, marginBottom: 16 },
   footerText: { fontSize: 11, color: colors.neutral.gray500, marginBottom: 4 },
   footerSubtext: { fontSize: 10, color: colors.neutral.gray400 },
-  // Calendrier Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
   modalContent: { width: '100%', maxWidth: 400, backgroundColor: colors.neutral.white, borderRadius: 16, padding: 20, shadowColor: colors.neutral.gray900, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 16, elevation: 8 },
   calendarHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, paddingHorizontal: 10 },

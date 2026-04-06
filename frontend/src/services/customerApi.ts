@@ -1,5 +1,5 @@
 
-const BASE_URL = 'http://192.168.0.238:3000'; 
+const BASE_URL = 'http://192.168.0.115:3000';
 
 
 async function apiCall<T>(
@@ -62,7 +62,13 @@ export interface CustomerDataResponse {
   success: boolean;
   data:    Record<string, any>;
 }
-
+// ══════════════════════════════════════════════════════════════
+//Api
+export interface VerificationResponse {
+  success: boolean;
+  message: string;
+  details?: Record<string, any>;
+}
 // ══════════════════════════════════════════════════════════════
 //  ÉTAPE 1 — Créer le customer
 //  Appelé par OnboardingPersonalDataScreen → handleContinue
@@ -271,4 +277,40 @@ export async function verifyEmailOtp(
     customerId,
     code,
   });
+}
+ 
+// ═══════════════════════════════════════════════════════════════
+//  API #1 — verifyOnboarding
+//  Appelé depuis OnboardingPersonalDataScreen → handleContinue
+//  AVANT de naviguer vers OtpVerification
+//
+//  Chaîne backend : VerifPID + FCM SCAN + SED
+//  → Si success=false : afficher message d'erreur et BLOQUER
+//  → Si success=true  : continuer vers OTP
+// ═══════════════════════════════════════════════════════════════
+export async function verifyOnboarding(
+  customerId: string,
+): Promise<VerificationResponse> {
+  return apiCall<VerificationResponse>(
+    `/customer/${customerId}/verify-onboarding`,
+    'POST',
+  );
+}
+ 
+// ═══════════════════════════════════════════════════════════════
+//  API #2 — verifyRisk
+//  Appelé depuis PersonalDataForm → handleContinue
+//  AVANT de naviguer vers Recapitulatif
+//
+//  Chaîne backend : FCM RISK (riskStatus doit être "LR")
+//  → Si success=false : afficher message d'erreur et BLOQUER
+//  → Si success=true  : continuer vers Récapitulatif
+// ═══════════════════════════════════════════════════════════════
+export async function verifyRisk(
+  customerId: string,
+): Promise<VerificationResponse> {
+  return apiCall<VerificationResponse>(
+    `/customer/${customerId}/verify-risk`,
+    'POST',
+  );
 }

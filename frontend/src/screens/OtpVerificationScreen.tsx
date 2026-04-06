@@ -5,6 +5,8 @@
 //  ✅ OTP reset à '' à chaque changement de page
 //  ✅ Email envoyé automatiquement au montage de la page email
 //  ✅ Info box rouge
+//  ✅ Bouton Quitter supprimé
+//  ✅ Boutons Retour et Continuer centrés
 // ============================================================
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -236,21 +238,6 @@ const OtpVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
   }
 };
 
-  // ── Quitter ──────────────────────────────────────────────
-  const handleQuit = () => {
-    Alert.alert(
-      'Quitter',
-      'Êtes-vous sûr de vouloir quitter le processus ?',
-      [
-        { text: 'Annuler', style: 'cancel' },
-        { text: 'Quitter', style: 'destructive', onPress: () => {
-          // @ts-ignore
-          navigation.navigate('EligibilityConditions');
-        }},
-      ],
-    );
-  };
-
   // ── Retour ───────────────────────────────────────────────
   const handleBack = () => {
     if (isSms) {
@@ -400,17 +387,9 @@ const OtpVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
 
             </View>
 
-            {/* ── Boutons ── */}
-            <View style={styles.btnRow}>
-              <TouchableOpacity
-                onPress={handleQuit}
-                style={[styles.btn, styles.quitBtn]}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.quitBtnText}>Quitter</Text>
-              </TouchableOpacity>
-
-              <View style={styles.rightBtns}>
+            {/* ── Boutons centrés ── */}
+            <View style={styles.btnContainer}>
+              <View style={styles.btnRow}>
                 <TouchableOpacity
                   onPress={handleBack}
                   style={[styles.btn, styles.backBtn]}
@@ -512,17 +491,66 @@ const styles = StyleSheet.create({
   infoTitle: { fontSize: s(12, 11), fontWeight: '700', color: colors.atb.red, marginBottom: 5 },
   infoItem:  { fontSize: s(11, 10), color: colors.atb.red, lineHeight: 19 },
 
-  btnRow:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: s(32, 24), gap: 10 },
-  rightBtns:  { flexDirection: 'row', gap: s(10, 8), flex: 1, justifyContent: 'flex-end' },
-  btn:        { height: s(50, 46), backgroundColor: '#fff', borderWidth: 1.5, borderRadius: 10, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, minWidth: s(85, 75) },
-  quitBtn:    { borderColor: colors.neutral.gray300 },
-  backBtn:    { borderColor: colors.neutral.gray300 },
-  quitBtnText:{ fontSize: s(13, 12), fontWeight: '600', color: colors.neutral.gray600 },
-  backBtnText:{ fontSize: s(13, 12), fontWeight: '600', color: colors.neutral.gray600 },
-  continueBtn:     { borderRadius: 10, overflow: 'hidden', shadowColor: colors.atb.red, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.2, shadowRadius: 6, elevation: 3, minWidth: s(115, 95) },
-  continueGradient:{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: s(50, 46), paddingHorizontal: s(18, 14), gap: 8 },
-  continueBtnText: { fontSize: s(13, 12), fontWeight: '700', color: '#fff' },
-  arrowRight:      { width: 6, height: 6, borderRightWidth: 2, borderTopWidth: 2, borderColor: '#fff', transform: [{ rotate: '45deg' }] },
+  // ✅ Boutons centrés et ajustés
+  btnContainer: { 
+    alignItems: 'center', 
+    marginBottom: s(32, 24) 
+  },
+  btnRow: { 
+    flexDirection: 'row', 
+    gap: s(12, 10), 
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  btn: { 
+    height: s(50, 46), 
+    backgroundColor: '#fff', 
+    borderWidth: 1.5, 
+    borderRadius: 10, 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    paddingHorizontal: s(20, 16), 
+    minWidth: s(110, 95)
+  },
+  backBtn: { 
+    borderColor: colors.neutral.gray300 
+  },
+  backBtnText: { 
+    fontSize: s(14, 13), 
+    fontWeight: '600', 
+    color: colors.neutral.gray600 
+  },
+  continueBtn: { 
+    borderRadius: 10, 
+    overflow: 'hidden', 
+    shadowColor: colors.atb.red, 
+    shadowOffset: { width: 0, height: 3 }, 
+    shadowOpacity: 0.2, 
+    shadowRadius: 6, 
+    elevation: 3, 
+    minWidth: s(120, 105)
+  },
+  continueGradient: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    height: s(50, 46), 
+    paddingHorizontal: s(20, 16), 
+    gap: 8 
+  },
+  continueBtnText: { 
+    fontSize: s(14, 13), 
+    fontWeight: '700', 
+    color: '#fff' 
+  },
+  arrowRight: { 
+    width: 6, 
+    height: 6, 
+    borderRightWidth: 2, 
+    borderTopWidth: 2, 
+    borderColor: '#fff', 
+    transform: [{ rotate: '45deg' }] 
+  },
 
   footer:        { alignItems: 'center', paddingTop: s(20, 16), paddingBottom: 8 },
   footerDivider: { width: 40, height: 1.5, backgroundColor: colors.neutral.gray200, borderRadius: 1, marginBottom: 8 },

@@ -2,7 +2,8 @@
 //  frontend/screens/ContractScreen.tsx
 //  ✅ Affiche le PDF via PDF.js dans WebView (compatible iOS)
 //  ✅ Fonctionne en réseau local sans Google
-//  ✅ Boutons téléchargement activés après lecture
+//  ✅ Bouton téléchargement activé après lecture
+//  ✅ Bouton Quitter pour retourner à l'accueil (remplace Word)
 // ============================================================
 import React, { useState, useEffect } from 'react';
 import {
@@ -21,7 +22,7 @@ type Props = {
   route: RouteProp<'ContractScreen'>;
 };
 
-const BASE_URL = 'http://192.168.0.238:3000';
+const BASE_URL = 'http://192.168.0.115:3000';
 
 // ── Header ────────────────────────────────────────────────────
 const Header: React.FC = () => (
@@ -84,15 +85,13 @@ const PhaseIndicator: React.FC = () => {
 const ContractScreen: React.FC<Props> = ({ navigation, route }) => {
   const { customerId } = route.params;
 
-  const [pdfBase64,         setPdfBase64]         = useState<string | null>(null);// PDF encodé en base64 pour affichage dans WebView
-  const [isLoadingPdf,      setIsLoadingPdf]      = useState(true);// Indique si le PDF est en cours de chargement
+  const [pdfBase64,         setPdfBase64]         = useState<string | null>(null);
+  const [isLoadingPdf,      setIsLoadingPdf]      = useState(true);
   const [loadError,         setLoadError]         = useState(false);
   const [hasRead,           setHasRead]           = useState(false);
   const [isDownloadingPdf,  setIsDownloadingPdf]  = useState(false);
-  const [isDownloadingDocx, setIsDownloadingDocx] = useState(false);
 
-  const pdfUrl  = `${BASE_URL}/customer/${customerId}/contract/pdf`;
-  const docxUrl = `${BASE_URL}/customer/${customerId}/contract/docx`;
+  const pdfUrl = `${BASE_URL}/customer/${customerId}/contract/pdf`;
 
   // ── Charger le PDF et le convertir en base64 ─────────────
   useEffect(() => {
@@ -104,7 +103,7 @@ const ContractScreen: React.FC<Props> = ({ navigation, route }) => {
     setLoadError(false);
     setPdfBase64(null);
     try {
-      const response = await fetch(pdfUrl);// Récupérer le PDF depuis le backend
+      const response = await fetch(pdfUrl);
       if (!response.ok) throw new Error(`Erreur serveur : ${response.status}`);
       const arrayBuffer = await response.arrayBuffer();
       const base64      = arrayBufferToBase64(arrayBuffer);
@@ -118,9 +117,7 @@ const ContractScreen: React.FC<Props> = ({ navigation, route }) => {
   };
 
   // ── ArrayBuffer → base64 (compatible iOS/Android) ──────── 
-  // arrayBufferToBase64 est nécessaire pour afficher le PDF dans WebView sans passer par un URL, ce qui garantit la compatibilité iOS (qui bloque souvent les URLs locales) et évite les problèmes de CORS.
-  //arrayBuffer est la réponse brute du fetch du PDF, et base64 est la chaîne encodée que nous injectons dans le HTML de la WebView pour que PDF.js puisse l'afficher.
-  const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {// Convertit un ArrayBuffer en chaîne base64 pour affichage dans WebView
+  const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
     let binary = '';
     const bytes = new Uint8Array(buffer);
     for (let i = 0; i < bytes.byteLength; i++) {
@@ -130,8 +127,6 @@ const ContractScreen: React.FC<Props> = ({ navigation, route }) => {
   };
 
   // ── HTML avec PDF.js pour afficher le PDF ────────────────
-  // PDF.js est chargé depuis CDN — compatible iOS WebView
-  //CDN est un réseau de serveurs qui distribue des fichiers statiques (comme des bibliothèques JavaScript) pour les rendre plus rapides à charger. En utilisant PDF.js depuis un CDN, nous évitons d'avoir à l'inclure dans notre projet et nous assurons que la dernière version stable est utilisée.
   const getPdfJsHtml = (base64: string) => `
 <!DOCTYPE html>
 <html>
@@ -198,7 +193,6 @@ const ContractScreen: React.FC<Props> = ({ navigation, route }) => {
             viewport: viewport,
           }).promise.then(function() {
             pagesRendered++;
-            // Notifier React Native que le PDF est chargé
             if (pagesRendered === totalPages && window.ReactNativeWebView) {
               window.ReactNativeWebView.postMessage('PDF_LOADED');
             }
@@ -209,7 +203,6 @@ const ContractScreen: React.FC<Props> = ({ navigation, route }) => {
       document.getElementById('loading').textContent = 'Erreur : ' + err.message;
     });
 
-    // Détecter le scroll pour activer les boutons
     document.getElementById('pdf-container').addEventListener('scroll', function() {
       if (window.ReactNativeWebView) {
         window.ReactNativeWebView.postMessage('PDF_SCROLLED');
@@ -234,26 +227,28 @@ const ContractScreen: React.FC<Props> = ({ navigation, route }) => {
     }
   };
 
-  // ── Télécharger DOCX ─────────────────────────────────────
-  const handleDownloadDocx = async () => {
-    setIsDownloadingDocx(true);
-    try {
-      const supported = await Linking.canOpenURL(docxUrl);
-      if (!supported) throw new Error("Impossible d'ouvrir ce lien.");
-      await Linking.openURL(docxUrl);
-    } catch (err: any) {
-      Alert.alert('Erreur', err.message || 'Impossible de télécharger.', [{ text: 'OK' }]);
-    } finally {
-      setIsDownloadingDocx(false);
-    }
-  };
-
   // ── Messages du WebView ──────────────────────────────────
   const handleWebViewMessage = (event: any) => {
     const msg = event.nativeEvent.data;
     if (msg === 'PDF_SCROLLED' || msg === 'PDF_LOADED') {
       setHasRead(true);
     }
+  };
+
+  // ── Quitter et retourner à l'accueil ─────────────────────
+  const handleQuit = () => {
+    Alert.alert(
+      'Quitter',
+      'Voulez-vous vraiment quitter cette page ?',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        { 
+          text: 'Quitter', 
+          style: 'destructive',
+          onPress: () => navigation.navigate('OnboardingHome')
+        }
+      ]
+    );
   };
 
   return (
@@ -280,8 +275,6 @@ const ContractScreen: React.FC<Props> = ({ navigation, route }) => {
 
       {/* ── Zone contrat ── */}
       <View style={styles.webViewContainer}>
-
-        {/* Chargement initial */}
         {isLoadingPdf && (
           <View style={styles.centerBox}>
             <ActivityIndicator size="large" color={colors.atb.red} />
@@ -290,7 +283,6 @@ const ContractScreen: React.FC<Props> = ({ navigation, route }) => {
           </View>
         )}
 
-        {/* Erreur */}
         {!isLoadingPdf && loadError && (
           <View style={styles.centerBox}>
             <Ionicons name="alert-circle-outline" size={52} color={colors.neutral.gray400} />
@@ -304,7 +296,6 @@ const ContractScreen: React.FC<Props> = ({ navigation, route }) => {
           </View>
         )}
 
-        {/* PDF via PDF.js */}
         {!isLoadingPdf && !loadError && pdfBase64 && (
           <WebView
             source={{ html: getPdfJsHtml(pdfBase64) }}
@@ -330,7 +321,7 @@ const ContractScreen: React.FC<Props> = ({ navigation, route }) => {
         )}
 
         <View style={styles.downloadRow}>
-          {/* PDF */}
+          {/* Bouton Télécharger PDF */}
           <TouchableOpacity
             onPress={handleDownloadPdf}
             style={styles.downloadBtnPdf}
@@ -351,32 +342,16 @@ const ContractScreen: React.FC<Props> = ({ navigation, route }) => {
             </LinearGradient>
           </TouchableOpacity>
 
-          {/* DOCX */}
+          {/* Bouton Quitter */}
           <TouchableOpacity
-            onPress={handleDownloadDocx}
-            style={[
-              styles.downloadBtnDocx,
-              !hasRead && { borderColor: colors.neutral.gray300 },
-            ]}
-            disabled={isDownloadingDocx || !hasRead}
+            onPress={handleQuit}
+            style={styles.quitButton}
             activeOpacity={0.85}
           >
-            {isDownloadingDocx
-              ? <ActivityIndicator color={colors.atb.red} size="small" />
-              : <>
-                  <Ionicons
-                    name="logo-windows"
-                    size={20}
-                    color={hasRead ? colors.atb.red : colors.neutral.gray400}
-                  />
-                  <Text style={[
-                    styles.downloadBtnDocxText,
-                    !hasRead && { color: colors.neutral.gray400 },
-                  ]}>
-                    Word
-                  </Text>
-                </>
-            }
+            <View style={styles.quitButtonContent}>
+              <Ionicons name="exit-outline" size={20} color={colors.atb.red} />
+              <Text style={styles.quitButtonText}>Quitter</Text>
+            </View>
           </TouchableOpacity>
         </View>
       </View>
@@ -432,12 +407,33 @@ const styles = StyleSheet.create({
   scrollHint:     { flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'center', marginBottom: 8 },
   scrollHintText: { fontSize: 11, color: colors.neutral.gray500 },
 
-  downloadRow:         { flexDirection: 'row', gap: 10 },
-  downloadBtnPdf:      { flex: 1, borderRadius: 10, overflow: 'hidden', shadowColor: colors.atb.red, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.25, shadowRadius: 6, elevation: 4 },
+  downloadRow:    { flexDirection: 'row', gap: 10 },
+  downloadBtnPdf: { flex: 1, borderRadius: 10, overflow: 'hidden', shadowColor: colors.atb.red, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.25, shadowRadius: 6, elevation: 4 },
   downloadBtnGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16 },
-  downloadBtnText:     { fontSize: 14, fontWeight: '700', color: '#fff' },
-  downloadBtnDocx:     { flex: 1, borderRadius: 10, borderWidth: 2, borderColor: colors.atb.red, backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16 },
-  downloadBtnDocxText: { fontSize: 14, fontWeight: '700', color: colors.atb.red },
+  downloadBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  
+  // Style pour le bouton Quitter (remplace l'ancien bouton Word)
+  quitButton: { 
+    flex: 1, 
+    borderRadius: 10, 
+    borderWidth: 2, 
+    borderColor: colors.atb.red, 
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  quitButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+  },
+  quitButtonText: { 
+    fontSize: 14, 
+    fontWeight: '700', 
+    color: colors.atb.red 
+  },
 });
 
 export default ContractScreen;
