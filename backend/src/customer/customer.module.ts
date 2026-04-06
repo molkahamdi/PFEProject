@@ -6,11 +6,13 @@ import { CustomerController } from './customer.controller';
 import { CustomerService } from './customer.service';
 import { ContractService }    from './contract/contract.service';
 import { ContractController } from './contract/contract.controller';
+import { OnboardingVerificationController } from './onboarding-verification.controller';
+import { OnboardingVerificationService } from './onboarding-verification.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Customer])],
-  controllers: [CustomerController,ContractController],
-  providers: [CustomerService,ContractService],
+  controllers: [CustomerController,ContractController,OnboardingVerificationController],
+  providers: [CustomerService,ContractService,OnboardingVerificationService],
   exports: [CustomerService],
 })
 export class CustomerModule {}

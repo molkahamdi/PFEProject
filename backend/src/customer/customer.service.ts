@@ -1,6 +1,15 @@
 // ============================================================
 //  backend/src/customer/customer.service.ts
-//  ✅ ocrScan ajouté — transmet la photo à Python :8001 en local
+//
+//  ✅ create() : vérifie EMAIL uniquement → ConflictException
+//               NE vérifie PLUS la CIN ici
+//               La CIN est vérifiée dans verifyOnboarding (VerifPID)
+//
+//  Raison : la détection CIN existante = logique MÉTIER bancaire
+//           → gérée dans le service de vérification onboarding
+//           → message adapté "déjà client ATB"
+//           La détection email = contrainte TECHNIQUE unique
+//           → gérée ici avec message clair
 // ============================================================
 import {
   Injectable,
@@ -31,7 +40,6 @@ const axios    = require('axios');
 export class CustomerService {
 
   private readonly logger = new Logger(CustomerService.name);
-  // ✅ Python tourne en local sur le même PC que NestJS → localhost fonctionne
   private readonly OCR_URL = process.env.OCR_SERVICE_URL || 'http://localhost:8001';
 
   constructor(
@@ -39,7 +47,6 @@ export class CustomerService {
     private readonly repo: Repository<Customer>,
   ) {}
 
-  // ── Utilitaire privé ──────────────────────────────────────
   private async findOrFail(id: string): Promise<Customer> {
     const c = await this.repo.findOne({ where: { id } });
     if (!c) throw new NotFoundException(`Customer "${id}" introuvable.`);
@@ -47,7 +54,7 @@ export class CustomerService {
   }
 
   // ══════════════════════════════════════════════════════════
-  //  ✅ OCR SCAN — reçoit la photo du front, l'envoie à Python
+  //  OCR SCAN
   // ══════════════════════════════════════════════════════════
   async ocrScan(
     customerId: string,
@@ -55,12 +62,7 @@ export class CustomerService {
     docType: string,
   ): Promise<any> {
     this.logger.log(`[OCR] Scan [${docType}] pour customer ${customerId}`);
-    this.logger.log(`[OCR] Fichier reçu : ${file?.originalname} | ${file?.size} bytes`);
-    this.logger.log(`[OCR] Envoi vers Python : ${this.OCR_URL}/ocr/scan`);
-
-    if (!file) {
-      throw new BadRequestException('Fichier manquant.');
-    }
+    if (!file) throw new BadRequestException('Fichier manquant.');
 
     const form = new FormData();
     form.append('document', file.buffer, {
@@ -71,25 +73,17 @@ export class CustomerService {
     form.append('customerId', customerId);
 
     try {
-      const response = await axios.post(
-        `${this.OCR_URL}/ocr/scan`,
-        form,
-        {
-          headers: form.getHeaders(),
-          timeout: 115_000,
-          maxBodyLength: Infinity,
-          maxContentLength: Infinity,
-        },
-      );
-
+      const response = await axios.post(`${this.OCR_URL}/ocr/scan`, form, {
+        headers: form.getHeaders(),
+        timeout: 115_000,
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+      });
       const result = response.data;
       this.logger.log(`[OCR] ✅ Succès [${docType}] confidence=${result.confidence}`);
-      this.logger.log(`[OCR] parsedData : ${JSON.stringify(result.parsedData)}`);
       return result;
-
     } catch (error: any) {
       const msg = error?.response?.data?.detail || error?.message || 'Erreur OCR inconnue';
-      this.logger.error(`[OCR] Erreur Python : ${JSON.stringify(error?.response?.data || msg)}`);
       this.logger.error(`[OCR] ❌ Erreur : ${msg}`);
       throw new BadRequestException(`Erreur microservice OCR : ${msg}`);
     }
@@ -97,14 +91,25 @@ export class CustomerService {
 
   // ══════════════════════════════════════════════════════════
   //  ÉTAPE 1 — Créer le customer
+  //
+  //  ✅ Vérifie EMAIL uniquement (contrainte technique d'unicité)
+  //  ❌ Ne vérifie PLUS la CIN ici
+  //     → La CIN est vérifiée dans verifyOnboarding() via VerifPID
+  //     → Cela permet d'afficher le message métier bancaire adapté
   // ══════════════════════════════════════════════════════════
   async create(dto: CreateCustomerDto): Promise<Customer> {
+
+    // ── Vérification email uniquement ────────────────────────
     const byEmail = await this.repo.findOne({ where: { email: dto.email } });
-    if (byEmail) throw new ConflictException('Cet email est déjà utilisé.');
+    if (byEmail) {
+      this.logger.warn(`[CREATE] Email déjà utilisé : ${dto.email}`);
+      throw new ConflictException(
+        'Cette adresse email est déjà associée à un dossier. Veuillez utiliser une autre adresse ou contacter votre agence ATB.',
+      );
+    }
 
-    const byCin = await this.repo.findOne({ where: { idCardNumber: dto.idCardNumber } });
-    if (byCin) throw new ConflictException('Ce numéro de CIN est déjà utilisé.');
-
+    // ── Création du customer (CIN non vérifiée ici) ──────────
+    // La CIN sera vérifiée dans verifyOnboarding() → VerifPID
     const customer = this.repo.create({
       ...dto,
       identificationSource: dto.identificationSource ?? IdentificationSource.MANUAL,
@@ -114,7 +119,7 @@ export class CustomerService {
     });
 
     const saved = await this.repo.save(customer);
-    this.logger.log(`Customer créé : ${saved.id} | ${saved.email}`);
+    this.logger.log(`[CREATE] ✅ Customer créé : ${saved.id} | email=${saved.email} | CIN=${saved.idCardNumber}`);
     return saved;
   }
 
@@ -123,46 +128,38 @@ export class CustomerService {
   // ══════════════════════════════════════════════════════════
   async generateOtp(id: string): Promise<{ otp: string; expiresAt: Date }> {
     const customer = await this.findOrFail(id);
-
     const otp       = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date();
     expiresAt.setMinutes(expiresAt.getMinutes() + 10);
-
     customer.otpCode      = otp;
     customer.otpExpiresAt = expiresAt;
     customer.otpAttempts  = 0;
     customer.status       = CustomerStatus.PENDING_OTP;
-
     await this.repo.save(customer);
-    this.logger.log(` OTP généré pour ${id} : ${otp}`);
+    this.logger.log(`[OTP] Généré pour ${id} : ${otp}`);
     return { otp, expiresAt };
   }
 
   async verifyOtp(id: string, dto: VerifyOtpDto): Promise<{ success: boolean }> {
     const customer = await this.findOrFail(id);
-
     if (customer.otpAttempts >= 3)
       throw new BadRequestException('Trop de tentatives. Demandez un nouveau code.');
-
     if (!customer.otpExpiresAt || new Date() > customer.otpExpiresAt)
       throw new BadRequestException('Le code OTP a expiré.');
-
     const isValid = customer.otpCode === dto.otpCode;
     if (!isValid) {
       customer.otpAttempts += 1;
       await this.repo.save(customer);
       throw new BadRequestException(`Code incorrect. ${3 - customer.otpAttempts} tentative(s) restante(s).`);
     }
-
     customer.isPhoneVerified = true;
     customer.otpCode         = null as unknown as string;
     customer.otpExpiresAt    = null as unknown as Date;
     customer.otpAttempts     = 0;
     customer.status          = CustomerStatus.FATCA_PENDING;
     customer.currentStep     = 2;
-
     await this.repo.save(customer);
-    this.logger.log(` OTP vérifié pour : ${id}`);
+    this.logger.log(`[OTP] ✅ Vérifié pour : ${id}`);
     return { success: true };
   }
 
@@ -173,14 +170,12 @@ export class CustomerService {
     const customer = await this.findOrFail(id);
     if (!customer.isPhoneVerified)
       throw new BadRequestException('Le téléphone doit être vérifié avant le FATCA.');
-
     Object.assign(customer, dto);
     customer.fatcaCompletedAt = new Date();
     customer.status           = CustomerStatus.DOCUMENTS_PENDING;
     customer.currentStep      = 3;
-
     const saved = await this.repo.save(customer);
-    this.logger.log(`FATCA enregistré pour : ${id}`);
+    this.logger.log(`[FATCA] Enregistré pour : ${id}`);
     return saved;
   }
 
@@ -189,19 +184,16 @@ export class CustomerService {
   // ══════════════════════════════════════════════════════════
   async saveDocuments(id: string, dto: SaveDocumentsDto): Promise<Customer> {
     const customer = await this.findOrFail(id);
-
     if (dto.usePassport && !dto.passportPath)
       throw new BadRequestException('Le chemin du passeport est requis.');
     if (!dto.usePassport && (!dto.idCardFrontPath || !dto.idCardBackPath))
       throw new BadRequestException('Les deux faces de la CIN sont requises.');
-
     Object.assign(customer, dto);
     customer.documentsUploadedAt = new Date();
     customer.status              = CustomerStatus.PERSONAL_PENDING;
     customer.currentStep         = 4;
-
     const saved = await this.repo.save(customer);
-    this.logger.log(` Documents enregistrés pour : ${id}`);
+    this.logger.log(`[DOCUMENTS] Enregistrés pour : ${id}`);
     return saved;
   }
 
@@ -210,14 +202,12 @@ export class CustomerService {
   // ══════════════════════════════════════════════════════════
   async savePersonalForm(id: string, dto: SavePersonalFormDto): Promise<Customer> {
     const customer = await this.findOrFail(id);
-
     Object.assign(customer, dto);
     customer.status      = CustomerStatus.SUBMITTED;
     customer.submittedAt = new Date();
     customer.currentStep = 5;
-
     const saved = await this.repo.save(customer);
-    this.logger.log(`🎉 Dossier soumis pour : ${id}`);
+    this.logger.log(`[PERSONAL-FORM] 🎉 Dossier soumis pour : ${id}`);
     return saved;
   }
 
@@ -226,13 +216,15 @@ export class CustomerService {
   // ══════════════════════════════════════════════════════════
   async findOne(id: string): Promise<Customer> { return this.findOrFail(id); }
   async findAll(): Promise<Customer[]> { return this.repo.find({ order: { createdAt: 'DESC' } }); }
-  async findByEmail(email: string): Promise<Customer | null> { return this.repo.findOne({ where: { email } }); }
+  async findByEmail(email: string): Promise<Customer | null> {
+    return this.repo.findOne({ where: { email } });
+  }
 
   async update(id: string, dto: Partial<CreateCustomerDto>): Promise<Customer> {
     const customer = await this.findOrFail(id);
     Object.assign(customer, dto);
     const updated = await this.repo.save(customer);
-    this.logger.log(` Customer mis à jour : ${id}`);
+    this.logger.log(`[UPDATE] Customer mis à jour : ${id}`);
     return updated;
   }
 }

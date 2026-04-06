@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { OcrService, DocType } from './ocr.service';
+import type { Multer } from 'multer';
 
 @Controller('ocr')
 export class OcrController {

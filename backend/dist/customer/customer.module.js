@@ -14,14 +14,16 @@ const customer_controller_1 = require("./customer.controller");
 const customer_service_1 = require("./customer.service");
 const contract_service_1 = require("./contract/contract.service");
 const contract_controller_1 = require("./contract/contract.controller");
+const onboarding_verification_controller_1 = require("./onboarding-verification.controller");
+const onboarding_verification_service_1 = require("./onboarding-verification.service");
 let CustomerModule = class CustomerModule {
 };
 exports.CustomerModule = CustomerModule;
 exports.CustomerModule = CustomerModule = __decorate([
     (0, common_1.Module)({
         imports: [typeorm_1.TypeOrmModule.forFeature([customer_entity_1.Customer])],
-        controllers: [customer_controller_1.CustomerController, contract_controller_1.ContractController],
-        providers: [customer_service_1.CustomerService, contract_service_1.ContractService],
+        controllers: [customer_controller_1.CustomerController, contract_controller_1.ContractController, onboarding_verification_controller_1.OnboardingVerificationController],
+        providers: [customer_service_1.CustomerService, contract_service_1.ContractService, onboarding_verification_service_1.OnboardingVerificationService],
         exports: [customer_service_1.CustomerService],
     })
 ], CustomerModule);

@@ -35,11 +35,8 @@ let CustomerService = CustomerService_1 = class CustomerService {
     }
     async ocrScan(customerId, file, docType) {
         this.logger.log(`[OCR] Scan [${docType}] pour customer ${customerId}`);
-        this.logger.log(`[OCR] Fichier reçu : ${file?.originalname} | ${file?.size} bytes`);
-        this.logger.log(`[OCR] Envoi vers Python : ${this.OCR_URL}/ocr/scan`);
-        if (!file) {
+        if (!file)
             throw new common_1.BadRequestException('Fichier manquant.');
-        }
         const form = new FormData();
         form.append('document', file.buffer, {
             filename: file.originalname || 'document.jpg',
@@ -56,23 +53,20 @@ let CustomerService = CustomerService_1 = class CustomerService {
             });
             const result = response.data;
             this.logger.log(`[OCR] ✅ Succès [${docType}] confidence=${result.confidence}`);
-            this.logger.log(`[OCR] parsedData : ${JSON.stringify(result.parsedData)}`);
             return result;
         }
         catch (error) {
             const msg = error?.response?.data?.detail || error?.message || 'Erreur OCR inconnue';
-            this.logger.error(`[OCR] Erreur Python : ${JSON.stringify(error?.response?.data || msg)}`);
             this.logger.error(`[OCR] ❌ Erreur : ${msg}`);
             throw new common_1.BadRequestException(`Erreur microservice OCR : ${msg}`);
         }
     }
     async create(dto) {
         const byEmail = await this.repo.findOne({ where: { email: dto.email } });
-        if (byEmail)
-            throw new common_1.ConflictException('Cet email est déjà utilisé.');
-        const byCin = await this.repo.findOne({ where: { idCardNumber: dto.idCardNumber } });
-        if (byCin)
-            throw new common_1.ConflictException('Ce numéro de CIN est déjà utilisé.');
+        if (byEmail) {
+            this.logger.warn(`[CREATE] Email déjà utilisé : ${dto.email}`);
+            throw new common_1.ConflictException('Cette adresse email est déjà associée à un dossier. Veuillez utiliser une autre adresse ou contacter votre agence ATB.');
+        }
         const customer = this.repo.create({
             ...dto,
             identificationSource: dto.identificationSource ?? customer_entity_1.IdentificationSource.MANUAL,
@@ -81,7 +75,7 @@ let CustomerService = CustomerService_1 = class CustomerService {
             otpAttempts: 0,
         });
         const saved = await this.repo.save(customer);
-        this.logger.log(`Customer créé : ${saved.id} | ${saved.email}`);
+        this.logger.log(`[CREATE] ✅ Customer créé : ${saved.id} | email=${saved.email} | CIN=${saved.idCardNumber}`);
         return saved;
     }
     async generateOtp(id) {
@@ -94,7 +88,7 @@ let CustomerService = CustomerService_1 = class CustomerService {
         customer.otpAttempts = 0;
         customer.status = customer_entity_1.CustomerStatus.PENDING_OTP;
         await this.repo.save(customer);
-        this.logger.log(` OTP généré pour ${id} : ${otp}`);
+        this.logger.log(`[OTP] Généré pour ${id} : ${otp}`);
         return { otp, expiresAt };
     }
     async verifyOtp(id, dto) {
@@ -116,7 +110,7 @@ let CustomerService = CustomerService_1 = class CustomerService {
         customer.status = customer_entity_1.CustomerStatus.FATCA_PENDING;
         customer.currentStep = 2;
         await this.repo.save(customer);
-        this.logger.log(` OTP vérifié pour : ${id}`);
+        this.logger.log(`[OTP] ✅ Vérifié pour : ${id}`);
         return { success: true };
     }
     async saveFatca(id, dto) {
@@ -128,7 +122,7 @@ let CustomerService = CustomerService_1 = class CustomerService {
         customer.status = customer_entity_1.CustomerStatus.DOCUMENTS_PENDING;
         customer.currentStep = 3;
         const saved = await this.repo.save(customer);
-        this.logger.log(`FATCA enregistré pour : ${id}`);
+        this.logger.log(`[FATCA] Enregistré pour : ${id}`);
         return saved;
     }
     async saveDocuments(id, dto) {
@@ -142,7 +136,7 @@ let CustomerService = CustomerService_1 = class CustomerService {
         customer.status = customer_entity_1.CustomerStatus.PERSONAL_PENDING;
         customer.currentStep = 4;
         const saved = await this.repo.save(customer);
-        this.logger.log(` Documents enregistrés pour : ${id}`);
+        this.logger.log(`[DOCUMENTS] Enregistrés pour : ${id}`);
         return saved;
     }
     async savePersonalForm(id, dto) {
@@ -152,17 +146,19 @@ let CustomerService = CustomerService_1 = class CustomerService {
         customer.submittedAt = new Date();
         customer.currentStep = 5;
         const saved = await this.repo.save(customer);
-        this.logger.log(`🎉 Dossier soumis pour : ${id}`);
+        this.logger.log(`[PERSONAL-FORM] 🎉 Dossier soumis pour : ${id}`);
         return saved;
     }
     async findOne(id) { return this.findOrFail(id); }
     async findAll() { return this.repo.find({ order: { createdAt: 'DESC' } }); }
-    async findByEmail(email) { return this.repo.findOne({ where: { email } }); }
+    async findByEmail(email) {
+        return this.repo.findOne({ where: { email } });
+    }
     async update(id, dto) {
         const customer = await this.findOrFail(id);
         Object.assign(customer, dto);
         const updated = await this.repo.save(customer);
-        this.logger.log(` Customer mis à jour : ${id}`);
+        this.logger.log(`[UPDATE] Customer mis à jour : ${id}`);
         return updated;
     }
 };
