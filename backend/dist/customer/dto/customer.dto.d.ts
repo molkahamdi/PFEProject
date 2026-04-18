@@ -52,3 +52,7 @@ export declare class SavePersonalFormDto {
     gouvernoratAgence: string;
     agence: string;
 }
+export declare class SignContractDto {
+    documentBase64: string;
+    eHouwiyaToken: string;
+}

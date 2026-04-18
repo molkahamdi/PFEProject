@@ -1,8 +1,3 @@
-// ══════════════════════════════════════════════════════════════
-//  DTOs — Data Transfer Objects
-//  Validation automatique de chaque étape
-// ══════════════════════════════════════════════════════════════
-
 import {
   IsString, IsEmail, IsEnum, IsOptional, IsNotEmpty,
   Length, Matches, IsBoolean, IsNumber,
@@ -10,7 +5,7 @@ import {
 import { IdentificationSource } from '../entities/customer.entity';
 
 // ──────────────────────────────────────────────────────────────
-//  DTO ÉTAPE 1 : Données personnelles (OnboardingPersonalDataScreen)
+//  DTO ÉTAPE 1 : Données personnelles
 // ──────────────────────────────────────────────────────────────
 export class CreateCustomerDto {
 
@@ -18,28 +13,27 @@ export class CreateCustomerDto {
   @IsOptional()
   identificationSource?: IdentificationSource;
 
-  // Identité
   @IsString() @IsNotEmpty({ message: 'Le nom est obligatoire' })
-  lastName: string;
+  lastName!: string;
 
   @IsString() @IsNotEmpty({ message: 'Le prénom est obligatoire' })
-  firstName: string;
+  firstName!: string;
 
   @IsString() @IsNotEmpty({ message: 'الاسم العائلي مطلوب' })
-  lastNameArabic: string;
+  lastNameArabic!: string;
 
   @IsString() @IsNotEmpty({ message: 'الاسم الشخصي مطلوب' })
-  firstNameArabic: string;
+  firstNameArabic!: string;
 
   @IsString() @IsNotEmpty({ message: 'Le genre est obligatoire' })
-  gender: string;
+  gender!: string;
 
   @IsString() @IsOptional()
   nationality?: string;
 
   @IsString() @IsNotEmpty()
   @Matches(/^\d{2}\/\d{2}\/\d{4}$/, { message: 'Format: JJ/MM/AAAA' })
-  birthDate: string;
+  birthDate!: string;
 
   @IsString() @IsOptional()
   birthPlace?: string;
@@ -50,50 +44,48 @@ export class CreateCustomerDto {
   @IsString() @IsOptional()
   countryOfResidence?: string;
 
-  // Contact
   @IsString() @IsNotEmpty()
   @Length(8, 8, { message: '8 chiffres requis' })
-  phoneNumber: string;
+  phoneNumber!: string;
 
   @IsEmail({}, { message: 'Email invalide' })
-  @IsNotEmpty({ message: 'L\'email est obligatoire' })
-  email: string;
+  @IsNotEmpty({ message: "L'email est obligatoire" })
+  email!: string;
 
-  // CIN
   @IsString() @IsNotEmpty()
   @Length(8, 8, { message: 'CIN = 8 chiffres' })
-  idCardNumber: string;
+  idCardNumber!: string;
 
   @IsString() @IsNotEmpty()
   @Matches(/^\d{2}\/\d{2}\/\d{4}$/, { message: 'Format: JJ/MM/AAAA' })
-  idIssueDate: string;
+  idIssueDate!: string;
 }
 
 // ──────────────────────────────────────────────────────────────
-//  DTO OTP : Vérification téléphone (OtpVerificationScreen)
+//  DTO OTP
 // ──────────────────────────────────────────────────────────────
 export class VerifyOtpDto {
   @IsString() @IsNotEmpty()
   @Length(6, 6, { message: 'Le code OTP doit contenir 6 chiffres' })
-  otpCode: string;
+  otpCode!: string;
 }
 
 // ──────────────────────────────────────────────────────────────
-//  DTO FATCA : Déclaration réglementaire (FATCAScreen)
+//  DTO FATCA
 // ──────────────────────────────────────────────────────────────
 export class SaveFatcaDto {
-  @IsBoolean() isUsCitizen: boolean;
-  @IsBoolean() isUsResident: boolean;
-  @IsBoolean() hasGreenCard: boolean;
-  @IsBoolean() isUsTaxpayer: boolean;
-  @IsBoolean() hasUsTransfers: boolean;
-  @IsBoolean() hasUsPhone: boolean;
-  @IsBoolean() hasUsProxy: boolean;
-  @IsBoolean() isPoliticallyExposed: boolean;
+  @IsBoolean() isUsCitizen!: boolean;
+  @IsBoolean() isUsResident!: boolean;
+  @IsBoolean() hasGreenCard!: boolean;
+  @IsBoolean() isUsTaxpayer!: boolean;
+  @IsBoolean() hasUsTransfers!: boolean;
+  @IsBoolean() hasUsPhone!: boolean;
+  @IsBoolean() hasUsProxy!: boolean;
+  @IsBoolean() isPoliticallyExposed!: boolean;
 }
 
 // ──────────────────────────────────────────────────────────────
-//  DTO ÉTAPE 2 : Documents (DocumentsJustificatifsScreen)
+//  DTO Documents
 // ──────────────────────────────────────────────────────────────
 export class SaveDocumentsDto {
   @IsBoolean() @IsOptional()
@@ -110,27 +102,51 @@ export class SaveDocumentsDto {
 }
 
 // ──────────────────────────────────────────────────────────────
-//  DTO ÉTAPE 3 : Données perso complètes (PersonalDataForm)
+//  DTO Formulaire personnel
 // ──────────────────────────────────────────────────────────────
 export class SavePersonalFormDto {
-  // Adresse
   @IsString() @IsOptional() pays?: string;
-  @IsString() @IsNotEmpty() gouvernorat: string;
-  @IsString() @IsNotEmpty() delegation: string;
-  @IsString() @IsNotEmpty() codePostal: string;
-  @IsString() @IsNotEmpty() adresse: string;
+  @IsString() @IsNotEmpty() gouvernorat!: string;
+  @IsString() @IsNotEmpty() delegation!: string;
+  @IsString() @IsNotEmpty() codePostal!: string;
+  @IsString() @IsNotEmpty() adresse!: string;
   @IsString() @IsOptional() adresseSuite?: string;
 
-  // Profession
-  @IsString() @IsNotEmpty() situationProfessionnelle: string;
+  @IsString() @IsNotEmpty() situationProfessionnelle!: string;
   @IsString() @IsOptional() profession?: string;
   @IsString() @IsOptional() posteActuel?: string;
   @IsString() @IsOptional() dateEmbauche?: string;
   @IsString() @IsOptional() employeur?: string;
   @IsString() @IsOptional() entreprise?: string;
-  @IsNumber() @IsOptional() revenuMensuel?: number;
+  @IsNumber()  @IsOptional() revenuMensuel?: number;
 
-  // Agence
-  @IsString() @IsNotEmpty() gouvernoratAgence: string;
-  @IsString() @IsNotEmpty() agence: string;
+  @IsString() @IsNotEmpty() gouvernoratAgence!: string;
+  @IsString() @IsNotEmpty() agence!: string;
+}
+
+// ══════════════════════════════════════════════════════════════
+// ✅ [E-HOUWIYA] — DTO pour la signature du contrat
+//
+// Reçu depuis le frontend après que l'utilisateur clique
+// sur "Signer avec E-Houwiya" dans ContractScreen.
+// Le frontend envoie le document PDF encodé en base64
+// et le token E-Houwiya stocké dans AsyncStorage.
+// ══════════════════════════════════════════════════════════════
+export class SignContractDto {
+  /**
+   * Le contrat PDF encodé en base64 — généré par ContractService.
+   * Le backend récupère ce PDF et le soumet à TunTrust pour signature.
+   * En production : TunTrust signe avec le certificat E-Houwiya du client.
+   * En simulation (PFE) : on utilise un document base64 statique pré-défini.
+   */
+  @IsString() @IsNotEmpty()
+  documentBase64!: string;
+
+  /**
+   * Le token E-Houwiya du client — stocké dans AsyncStorage côté frontend.
+   * Ce token authentifie le client auprès de TunTrust pour la signature.
+   * En simulation (PFE) : token JWT statique généré par simulateEHouwiya.
+   */
+  @IsString() @IsNotEmpty()
+  eHouwiyaToken!: string;
 }

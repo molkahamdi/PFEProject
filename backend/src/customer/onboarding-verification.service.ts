@@ -1,13 +1,19 @@
 // ============================================================
 //  backend/src/customer/onboarding-verification.service.ts
 //
-//  ✅ VerifPID corrigé :
-//     Un utilisateur est considéré comme "client ATB existant"
-//     UNIQUEMENT s'il a généré son contrat (statut SUBMITTED ou APPROVED)
-//     
-//     Les statuts intermédiaires (PENDING_OTP, FATCA_PENDING, 
-//     DOCUMENTS_PENDING, PERSONAL_PENDING) ne bloquent PAS
-//     car l'utilisateur n'a pas finalisé son inscription
+//  ✅ CORRECTIONS APPORTÉES :
+//  ──────────────────────────────────────────────────────────
+//  1. VerifPID cherche une CIN finalisée TOUS FLUX CONFONDUS
+//     → SUBMITTED ou APPROVED, E_HOUWIYA ou MANUAL indifféremment
+//     → Empêche : E-Houwiya signé → retentative MANUAL avec même CIN
+//     → Empêche : MANUAL finalisé → retentative E-Houwiya
+//
+//  2. Log enrichi : affiche identificationSource du doublon trouvé
+//     pour faciliter le débogage
+//
+//  3. ACTIVE_CLIENT_STATUSES inclut aussi SUBMITTED et APPROVED,
+//     inchangé — mais maintenant les clients E-Houwiya atteignent
+//     bien SUBMITTED grâce à la correction dans EHouwiyaService
 // ============================================================
 
 import {
@@ -26,39 +32,26 @@ export interface VerificationResult {
 }
 
 // ── Statuts considérés comme "client ATB actif" ──────────────
-// ✅ MODIFICATION : Seuls les statuts de dossier COMPLÈTEMENT finalisé
-//    Un client n'est considéré comme "client ATB existant" que si :
-//    - SUBMITTED : dossier soumis (contrat généré)
-//    - APPROVED  : dossier approuvé
-//    
-//    Les statuts intermédiaires (PENDING_OTP, FATCA_PENDING, 
-//    DOCUMENTS_PENDING, PERSONAL_PENDING) ne comptent PAS
-//    car l'utilisateur n'a pas terminé le processus complet
-//    (il peut reprendre son dossier là où il s'est arrêté)
+// ✅ Inchangé — mais maintenant cohérent avec les deux flux :
+//    - MANUAL   : atteint SUBMITTED via ContractScreen/soumission
+//    - E_HOUWIYA : atteint SUBMITTED via EHouwiyaService.signContract()
+//                  (correction apportée dans ehouwiya.service.ts)
+//
+// Un client est "actif" uniquement s'il a finalisé son dossier.
+// Les statuts intermédiaires ne bloquent pas → l'utilisateur
+// peut reprendre ou recommencer avec une nouvelle session.
 const ACTIVE_CLIENT_STATUSES: CustomerStatus[] = [
-  CustomerStatus.SUBMITTED,   // ✅ Dossier finalisé et soumis
-  CustomerStatus.APPROVED,    // ✅ Dossier approuvé par la banque
-  // ❌ SUPPRIMÉ : PENDING_OTP, FATCA_PENDING, DOCUMENTS_PENDING, PERSONAL_PENDING
+  CustomerStatus.SUBMITTED,
+  CustomerStatus.APPROVED,
 ];
 
-// ── FCM SCAN : mots-clés propres (min 4 chars, trim) ─────────
+// ── FCM SCAN : mots-clés bloqués ─────────────────────────────
 const FCM_BLOCKED_KEYWORDS: string[] = [
-  'ben ali',
-  'zine el abidine',
-  'trabelsi',
-  'gaddafi',
-  'moubarak',
-  'saddam hussein',
-  'bin laden',
-  'oussama laden',
-  'baghdadi','ghanouchi','tarabouli',
-  // Arabes
-  'بن علي',
-  'زين العابدين',
-  'القذافي',
-  'بن لادن',
-  'صدام حسين',
-  'البغدادي','الغنوشي','الترابي',
+  'ben ali', 'zine el abidine', 'trabelsi', 'gaddafi',
+  'moubarak', 'saddam hussein', 'bin laden', 'oussama laden',
+  'baghdadi', 'ghanouchi', 'tarabouli',
+  'بن علي', 'زين العابدين', 'القذافي', 'بن لادن',
+  'صدام حسين', 'البغدادي', 'الغنوشي', 'الترابي',
 ].map(k => k.trim()).filter(k => k.length >= 4);
 
 // ── SED : CIN interdites de chéquier (simulation) ────────────
@@ -95,96 +88,106 @@ export class OnboardingVerificationService {
   }
 
   // ════════════════════════════════════════════════════════════
-  //  API #1 — verifyOnboarding  (Écran 1)
+  //  API #1 — verifyOnboarding  (appelé depuis Écran 1)
   //  VerifPID → FCM SCAN → SED
+  //
+  //  ✅ Appelé dans les DEUX flux (MANUAL et E-HOUWIYA)
+  //  depuis OnboardingPersonalDataScreen.handleContinue()
   // ════════════════════════════════════════════════════════════
   async verifyOnboarding(customerId: string): Promise<VerificationResult> {
     const customer = await this.findOrFail(customerId);
 
     this.logger.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     this.logger.log(`[VERIFY-ONBOARDING] Démarrage`);
-    this.logger.log(`  customerId  : ${customerId}`);
-    this.logger.log(`  CIN         : ${customer.idCardNumber}`);
-    this.logger.log(`  Nom         : ${customer.firstName} ${customer.lastName}`);
-    this.logger.log(`  Nom arabe   : ${customer.firstNameArabic ?? ''} ${customer.lastNameArabic ?? ''}`);
-    this.logger.log(`  Statut actuel : ${customer.status}`);
+    this.logger.log(`  customerId         : ${customerId}`);
+    this.logger.log(`  CIN                : ${customer.idCardNumber}`);
+    this.logger.log(`  Nom                : ${customer.firstName} ${customer.lastName}`);
+    this.logger.log(`  Nom arabe          : ${customer.firstNameArabic ?? ''} ${customer.lastNameArabic ?? ''}`);
+    this.logger.log(`  Statut actuel      : ${customer.status}`);
+    this.logger.log(`  Source             : ${customer.identificationSource}`); // ✅ AJOUTÉ
     this.logger.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     // ─── 1. VerifPID ─────────────────────────────────────────
     //
-    // ✅ NOUVELLE LOGIQUE CORRIGÉE :
-    //   Un client est considéré comme "client ATB existant" UNIQUEMENT
-    //   s'il a terminé TOUT le processus d'ouverture de compte :
-    //   - SUBMITTED : dossier soumis (contrat généré)
-    //   - APPROVED  : dossier approuvé
+    // ✅ CORRECTION PRINCIPALE :
     //
-    //   Si un utilisateur a un statut intermédiaire :
-    //   - PENDING_OTP      : n'a pas validé son OTP
-    //   - FATCA_PENDING    : n'a pas rempli FATCA
-    //   - DOCUMENTS_PENDING: n'a pas uploadé les docs
-    //   - PERSONAL_PENDING : n'a pas rempli le formulaire perso
-    //   
-    //   → Ces statuts NE BLOQUENT PAS car l'utilisateur n'a pas
-    //     finalisé son inscription → il peut reprendre son dossier
+    // La recherche de doublon s'applique TOUS FLUX CONFONDUS.
+    // On cherche une CIN finalisée (SUBMITTED ou APPROVED)
+    // indépendamment de identificationSource (MANUAL ou E_HOUWIYA).
     //
-    this.logger.log('[VerifPID] Recherche dans la BDD...');
-    this.logger.log(`[VerifPID] Statuts "client actif" recherchés : ${ACTIVE_CLIENT_STATUSES.join(', ')}`);
-    this.logger.log(`[VerifPID] ⚠️ Les statuts intermédiaires (PENDING_OTP, FATCA_PENDING, etc.) ne bloquent PAS`);
-    
+    // Scénarios bloqués :
+    //   A) E_HOUWIYA signé (SUBMITTED) + tentative MANUAL    → BLOQUÉ ✅
+    //   B) MANUAL finalisé (SUBMITTED) + tentative E_HOUWIYA → BLOQUÉ ✅
+    //      (E_HOUWIYA bloqué dès simulateEHouwiya() côté EHouwiyaService)
+    //   C) Double MANUAL avec même CIN                        → BLOQUÉ ✅ (déjà le cas)
+    //   D) Double E_HOUWIYA avec même CIN                     → BLOQUÉ ✅ (nouveau)
+    //
+    // Pourquoi ça fonctionnait avant seulement partiellement :
+    //   → Les clients E_HOUWIYA restaient en PENDING_OTP (bug corrigé
+    //     dans ehouwiya.service.ts : signContract met maintenant SUBMITTED)
+    //   → Donc PENDING_OTP n'était pas dans ACTIVE_CLIENT_STATUSES
+    //   → Le doublon E-Houwiya passait toujours à travers VerifPID
+    //
+    this.logger.log('[VerifPID] Recherche doublon CIN (tous flux)...');
+    this.logger.log(`[VerifPID] Statuts bloquants : ${ACTIVE_CLIENT_STATUSES.join(', ')}`);
+    this.logger.log(`[VerifPID] ⚠️ Statuts intermédiaires ne bloquent PAS (reprise autorisée)`);
+
     {
-      // Rechercher un client existant avec la même CIN
-      // ET qui a COMPLÈTEMENT finalisé son dossier (SUBMITTED ou APPROVED)
+      // ✅ Pas de filtre sur identificationSource — on cherche TOUS les flux
       const existingClient = await this.repo.findOne({
         where: {
           idCardNumber: customer.idCardNumber,
-          id:     Not(customerId),          // exclure le customer courant
-          status: In(ACTIVE_CLIENT_STATUSES), // ✅ UNIQUEMENT les statuts finalisés
+          id:           Not(customerId),
+          status:       In(ACTIVE_CLIENT_STATUSES),
+          // ✅ PAS de filtre identificationSource ici
+          //    → un client E-Houwiya SUBMITTED bloque un MANUAL et vice-versa
         },
       });
 
       if (existingClient) {
-        this.logger.warn(`[VerifPID] ❌ BLOQUÉ — Client ATB existant trouvé en BDD (dossier finalisé)`);
-        this.logger.warn(`  ID trouvé  : ${existingClient.id}`);
-        this.logger.warn(`  Statut     : ${existingClient.status} (dossier finalisé)`);
-        this.logger.warn(`  Nom        : ${existingClient.firstName} ${existingClient.lastName}`);
+        this.logger.warn(`[VerifPID] ❌ BLOQUÉ — Doublon CIN trouvé`);
+        this.logger.warn(`  ID trouvé          : ${existingClient.id}`);
+        this.logger.warn(`  Statut             : ${existingClient.status}`);
+        this.logger.warn(`  Source             : ${existingClient.identificationSource}`); // ✅ AJOUTÉ
+        this.logger.warn(`  Nom                : ${existingClient.firstName} ${existingClient.lastName}`);
         return {
           success: false,
           message: 'Cette carte d\'identité est déjà associée à un compte ATB. Il n\'est pas possible d\'ouvrir un deuxième compte.',
           details: {
-            step:               'VERIF_PID',
-            blocked:            true,
-            existingCustomerId: existingClient.id,
-            existingStatus:     existingClient.status,
+            step:                    'VERIF_PID',
+            blocked:                 true,
+            existingCustomerId:      existingClient.id,
+            existingStatus:          existingClient.status,
+            existingSource:          existingClient.identificationSource, // ✅ AJOUTÉ
           },
         };
       }
 
-      // Vérifier les dossiers non finalisés avec la même CIN
-      // (PENDING_OTP, FATCA_PENDING, DOCUMENTS_PENDING, PERSONAL_PENDING)
+      // Log informatif pour les brouillons (non bloquant)
       const intermediateStatuses: CustomerStatus[] = [
         CustomerStatus.PENDING_OTP,
         CustomerStatus.FATCA_PENDING,
         CustomerStatus.DOCUMENTS_PENDING,
         CustomerStatus.PERSONAL_PENDING,
       ];
-      
+
       const existingDraft = await this.repo.findOne({
         where: {
           idCardNumber: customer.idCardNumber,
-          id:     Not(customerId),
-          status: In(intermediateStatuses),
+          id:           Not(customerId),
+          status:       In(intermediateStatuses),
         },
       });
 
       if (existingDraft) {
-        this.logger.log(`[VerifPID] ℹ️  Un dossier non finalisé avec la même CIN existe`);
-        this.logger.log(`[VerifPID]    → ID: ${existingDraft.id}`);
-        this.logger.log(`[VerifPID]    → Statut: ${existingDraft.status} (processus non terminé)`);
-        this.logger.log(`[VerifPID]    → L'utilisateur a quitté le processus avant finalisation`);
-        this.logger.log(`[VerifPID]    → On laisse passer pour qu'il puisse créer un NOUVEAU dossier`);
+        this.logger.log(`[VerifPID] ℹ️  Brouillon non finalisé trouvé`);
+        this.logger.log(`[VerifPID]    → ID     : ${existingDraft.id}`);
+        this.logger.log(`[VerifPID]    → Statut : ${existingDraft.status}`);
+        this.logger.log(`[VerifPID]    → Source : ${existingDraft.identificationSource}`);
+        this.logger.log(`[VerifPID]    → Processus non terminé → nouvelle session autorisée`);
       }
 
-      this.logger.log('[VerifPID] ✅ OK — Aucun client ATB existant avec cette CIN');
+      this.logger.log('[VerifPID] ✅ OK — Aucun doublon CIN finalisé');
     }
 
     // ─── 2. FCM SCAN ─────────────────────────────────────────
@@ -292,7 +295,7 @@ export class OnboardingVerificationService {
 
   // ════════════════════════════════════════════════════════════
   //  API #2 — verifyRisk  (Écran 2)
-  //  FCM RISK : toujours LR statique pour le PFE
+  //  FCM RISK — inchangé
   // ════════════════════════════════════════════════════════════
   async verifyRisk(customerId: string): Promise<VerificationResult> {
     const customer = await this.findOrFail(customerId);

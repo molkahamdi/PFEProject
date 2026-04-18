@@ -1,6 +1,8 @@
 import { Repository } from 'typeorm';
 import { Customer } from './entities/customer.entity';
 import { CreateCustomerDto, VerifyOtpDto, SaveFatcaDto, SaveDocumentsDto, SavePersonalFormDto } from './dto/customer.dto';
+export declare const EHOUWIYA_LOCKED_FIELDS: readonly ["lastName", "firstName", "lastNameArabic", "firstNameArabic", "gender", "nationality", "birthDate", "birthPlace", "countryOfBirth", "countryOfResidence", "idCardNumber", "idIssueDate", "email", "phoneNumber"];
+export type EHouwiyaLockedField = typeof EHOUWIYA_LOCKED_FIELDS[number];
 export declare class CustomerService {
     private readonly repo;
     private readonly logger;

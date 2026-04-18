@@ -1,16 +1,25 @@
 // ============================================================
 //  backend/src/customer/customer.service.ts
 //
-//  ✅ create() : vérifie EMAIL uniquement → ConflictException
-//               NE vérifie PLUS la CIN ici
-//               La CIN est vérifiée dans verifyOnboarding (VerifPID)
+//  ✅ [E-HOUWIYA] CORRECTION :
+//  ─────────────────────────────────────────
+//  email et phoneNumber sont maintenant AUSSI verrouillés
+//  pour les customers E-Houwiya.
 //
-//  Raison : la détection CIN existante = logique MÉTIER bancaire
-//           → gérée dans le service de vérification onboarding
-//           → message adapté "déjà client ATB"
-//           La détection email = contrainte TECHNIQUE unique
-//           → gérée ici avec message clair
+//  Raison : lorsqu'un client ouvre un compte E-Houwiya,
+//  il saisit son vrai email et vrai numéro de téléphone
+//  qui sont VALIDÉS par TunTrust lors de la vérification.
+//  Ces données font partie de son identité numérique certifiée
+//  et ne peuvent donc PAS être modifiées, au même titre
+//  que le nom, la CIN, la date de naissance, etc.
+//
+//  → La méthode updateEHouwiyaContact() est SUPPRIMÉE
+//  → update() bloque TOUS les champs identité + contact
+//  → Le frontend ne doit afficher AUCUN champ éditable
+//    sauf les données non fournies par E-Houwiya
+//    (adresse, situation pro, agence ATB)
 // ============================================================
+
 import {
   Injectable,
   NotFoundException,
@@ -35,6 +44,40 @@ import {
 
 const FormData = require('form-data');
 const axios    = require('axios');
+
+// ══════════════════════════════════════════════════════════════
+// ✅ [E-HOUWIYA] Liste complète des champs verrouillés
+//
+// Tous ces champs proviennent de E-Houwiya et sont validés
+// par TunTrust. Ils ne peuvent JAMAIS être modifiés.
+//
+// En production : la banque peut ajuster cette liste
+// selon ce que retourne réellement l'API E-Houwiya.
+// ══════════════════════════════════════════════════════════════
+export const EHOUWIYA_LOCKED_FIELDS = [
+  // Identité civile
+  'lastName',
+  'firstName',
+  'lastNameArabic',
+  'firstNameArabic',
+  'gender',
+  'nationality',
+  'birthDate',
+  'birthPlace',
+  'countryOfBirth',
+  'countryOfResidence',
+  // Pièce d'identité
+  'idCardNumber',
+  'idIssueDate',
+  // ✅ [CORRECTION] Contact validé par TunTrust — aussi verrouillé
+  // Le client a saisi et validé son email et téléphone
+  // lors de l'ouverture de son compte E-Houwiya.
+  // Ces données sont certifiées et ne peuvent pas être changées.
+  'email',
+  'phoneNumber',
+] as const;
+
+export type EHouwiyaLockedField = typeof EHOUWIYA_LOCKED_FIELDS[number];
 
 @Injectable()
 export class CustomerService {
@@ -74,9 +117,9 @@ export class CustomerService {
 
     try {
       const response = await axios.post(`${this.OCR_URL}/ocr/scan`, form, {
-        headers: form.getHeaders(),
-        timeout: 115_000,
-        maxBodyLength: Infinity,
+        headers:          form.getHeaders(),
+        timeout:          115_000,
+        maxBodyLength:    Infinity,
         maxContentLength: Infinity,
       });
       const result = response.data;
@@ -91,15 +134,9 @@ export class CustomerService {
 
   // ══════════════════════════════════════════════════════════
   //  ÉTAPE 1 — Créer le customer
-  //
-  //  ✅ Vérifie EMAIL uniquement (contrainte technique d'unicité)
-  //  ❌ Ne vérifie PLUS la CIN ici
-  //     → La CIN est vérifiée dans verifyOnboarding() via VerifPID
-  //     → Cela permet d'afficher le message métier bancaire adapté
   // ══════════════════════════════════════════════════════════
   async create(dto: CreateCustomerDto): Promise<Customer> {
 
-    // ── Vérification email uniquement ────────────────────────
     const byEmail = await this.repo.findOne({ where: { email: dto.email } });
     if (byEmail) {
       this.logger.warn(`[CREATE] Email déjà utilisé : ${dto.email}`);
@@ -108,8 +145,6 @@ export class CustomerService {
       );
     }
 
-    // ── Création du customer (CIN non vérifiée ici) ──────────
-    // La CIN sera vérifiée dans verifyOnboarding() → VerifPID
     const customer = this.repo.create({
       ...dto,
       identificationSource: dto.identificationSource ?? IdentificationSource.MANUAL,
@@ -119,7 +154,7 @@ export class CustomerService {
     });
 
     const saved = await this.repo.save(customer);
-    this.logger.log(`[CREATE] ✅ Customer créé : ${saved.id} | email=${saved.email} | CIN=${saved.idCardNumber}`);
+    this.logger.log(`[CREATE] ✅ Customer créé : ${saved.id} | source=${saved.identificationSource}`);
     return saved;
   }
 
@@ -127,7 +162,7 @@ export class CustomerService {
   //  OTP
   // ══════════════════════════════════════════════════════════
   async generateOtp(id: string): Promise<{ otp: string; expiresAt: Date }> {
-    const customer = await this.findOrFail(id);
+    const customer  = await this.findOrFail(id);
     const otp       = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date();
     expiresAt.setMinutes(expiresAt.getMinutes() + 10);
@@ -215,13 +250,43 @@ export class CustomerService {
   //  LECTURE
   // ══════════════════════════════════════════════════════════
   async findOne(id: string): Promise<Customer> { return this.findOrFail(id); }
-  async findAll(): Promise<Customer[]> { return this.repo.find({ order: { createdAt: 'DESC' } }); }
+  async findAll(): Promise<Customer[]> {
+    return this.repo.find({ order: { createdAt: 'DESC' } });
+  }
   async findByEmail(email: string): Promise<Customer | null> {
     return this.repo.findOne({ where: { email } });
   }
 
+  // ══════════════════════════════════════════════════════════
+  //  MISE À JOUR
+  //
+  //  ✅ [E-HOUWIYA] CORRECTION FINALE :
+  //  Tous les champs EHOUWIYA_LOCKED_FIELDS sont protégés,
+  //  incluant désormais email et phoneNumber.
+  //
+  //  Ces champs ont été validés par TunTrust lors de
+  //  l'ouverture du compte E-Houwiya et sont donc
+  //  considérés comme des données certifiées immuables.
+  //
+  //  Seuls les champs suivants restent modifiables
+  //  via PATCH /customer/:id en mode E-Houwiya :
+  //  → adresse, gouvernorat, delegation, codePostal
+  //  → situationProfessionnelle, profession, entreprise, etc.
+  //  → gouvernoratAgence, agence
+  //  → réponses FATCA (questions réglementaires)
+  // ══════════════════════════════════════════════════════════
   async update(id: string, dto: Partial<CreateCustomerDto>): Promise<Customer> {
     const customer = await this.findOrFail(id);
+
+    if (customer.identificationSource === IdentificationSource.E_HOUWIYA) {
+      EHOUWIYA_LOCKED_FIELDS.forEach(field => delete (dto as any)[field]);
+
+      this.logger.log(
+        `[UPDATE] [E-HOUWIYA] Champs verrouillés protégés pour : ${id} ` +
+        `(identité + email + téléphone)`,
+      );
+    }
+
     Object.assign(customer, dto);
     const updated = await this.repo.save(customer);
     this.logger.log(`[UPDATE] Customer mis à jour : ${id}`);

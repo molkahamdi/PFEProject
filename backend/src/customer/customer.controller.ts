@@ -1,6 +1,15 @@
 // ============================================================
 //  backend/src/customer/customer.controller.ts
-//  ✅ Endpoint OCR ajouté : POST /customer/:id/ocr/scan
+//
+//  ✅ [E-HOUWIYA] CORRECTION :
+//  L'endpoint PATCH /:id/ehouwiya-contact est SUPPRIMÉ.
+//
+//  Raison : email et phoneNumber sont aussi verrouillés
+//  pour les customers E-Houwiya (validés par TunTrust).
+//  Aucun champ de contact ne peut être modifié.
+//
+//  Le PATCH /:id standard protège automatiquement tous
+//  les champs via EHOUWIYA_LOCKED_FIELDS dans le service.
 // ============================================================
 import {
   Controller,
@@ -37,9 +46,10 @@ export class CustomerController {
       success: true,
       message: 'Dossier créé.',
       data: {
-        id:          customer.id,
-        currentStep: customer.currentStep,
-        status:      customer.status,
+        id:                   customer.id,
+        currentStep:          customer.currentStep,
+        status:               customer.status,
+        identificationSource: customer.identificationSource,
       },
     };
   }
@@ -130,19 +140,25 @@ export class CustomerController {
   }
 
   // ── Mise à jour partielle ─────────────────────────────────
+  // ✅ [E-HOUWIYA] : Si source = E_HOUWIYA, les champs
+  // identité + email + téléphone sont automatiquement
+  // préservés dans customer.service.ts via EHOUWIYA_LOCKED_FIELDS
   @Patch(':id')
   async update(@Param('id') id: string, @Body() dto: Partial<CreateCustomerDto>) {
     const customer = await this.service.update(id, dto);
     return {
       success: true,
       message: 'Customer mis à jour.',
-      data: { id: customer.id, currentStep: customer.currentStep, status: customer.status },
+      data: {
+        id:                   customer.id,
+        currentStep:          customer.currentStep,
+        status:               customer.status,
+        identificationSource: customer.identificationSource,
+      },
     };
   }
 
-  // ── ✅ OCR SCAN — le front envoie la photo ici ────────────
-  // Le téléphone ne peut pas atteindre Python :8001 directement
-  // → NestJS reçoit la photo et la transmet à Python en local
+  // ── OCR SCAN ──────────────────────────────────────────────
   @Post(':id/ocr/scan')
   @HttpCode(HttpStatus.OK)
   @UseInterceptors(FileInterceptor('document'))

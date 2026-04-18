@@ -31,6 +31,7 @@ let CustomerController = class CustomerController {
                 id: customer.id,
                 currentStep: customer.currentStep,
                 status: customer.status,
+                identificationSource: customer.identificationSource,
             },
         };
     }
@@ -98,7 +99,12 @@ let CustomerController = class CustomerController {
         return {
             success: true,
             message: 'Customer mis à jour.',
-            data: { id: customer.id, currentStep: customer.currentStep, status: customer.status },
+            data: {
+                id: customer.id,
+                currentStep: customer.currentStep,
+                status: customer.status,
+                identificationSource: customer.identificationSource,
+            },
         };
     }
     async ocrScan(customerId, file, docType) {

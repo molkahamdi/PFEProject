@@ -23,7 +23,7 @@ import { EmailOtpModule } from './email-otp/email-otp.module';
         password: String(cfg.get<string>('POSTGRES_PASSWORD') || ''),
         database: cfg.get<string>('POSTGRES_DB'),
         entities: [Customer],
-        synchronize: true, 
+        synchronize: true, // ca veut dire que TypeORM va automatiquement créer/synchroniser les tables en fonction des entités. À utiliser uniquement en développement !
         logging: ['error'],
       }),
     }),

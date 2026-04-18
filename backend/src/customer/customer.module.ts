@@ -8,11 +8,13 @@ import { ContractService }    from './contract/contract.service';
 import { ContractController } from './contract/contract.controller';
 import { OnboardingVerificationController } from './onboarding-verification.controller';
 import { OnboardingVerificationService } from './onboarding-verification.service';
+import { EHouwiyaController } from './ehouwiya/ehouwiya.controller';
+import { EHouwiyaService } from './ehouwiya/ehouwiya.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Customer])],
-  controllers: [CustomerController,ContractController,OnboardingVerificationController],
-  providers: [CustomerService,ContractService,OnboardingVerificationService],
-  exports: [CustomerService],
+  controllers: [CustomerController,ContractController,OnboardingVerificationController,EHouwiyaController],
+  providers: [CustomerService,ContractService,OnboardingVerificationService,EHouwiyaService],
+  exports: [CustomerService,EHouwiyaService],
 })
 export class CustomerModule {}

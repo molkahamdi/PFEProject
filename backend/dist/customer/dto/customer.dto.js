@@ -9,7 +9,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SavePersonalFormDto = exports.SaveDocumentsDto = exports.SaveFatcaDto = exports.VerifyOtpDto = exports.CreateCustomerDto = void 0;
+exports.SignContractDto = exports.SavePersonalFormDto = exports.SaveDocumentsDto = exports.SaveFatcaDto = exports.VerifyOtpDto = exports.CreateCustomerDto = void 0;
 const class_validator_1 = require("class-validator");
 const customer_entity_1 = require("../entities/customer.entity");
 class CreateCustomerDto {
@@ -94,7 +94,7 @@ __decorate([
 ], CreateCustomerDto.prototype, "phoneNumber", void 0);
 __decorate([
     (0, class_validator_1.IsEmail)({}, { message: 'Email invalide' }),
-    (0, class_validator_1.IsNotEmpty)({ message: 'L\'email est obligatoire' }),
+    (0, class_validator_1.IsNotEmpty)({ message: "L'email est obligatoire" }),
     __metadata("design:type", String)
 ], CreateCustomerDto.prototype, "email", void 0);
 __decorate([
@@ -282,4 +282,19 @@ __decorate([
     (0, class_validator_1.IsNotEmpty)(),
     __metadata("design:type", String)
 ], SavePersonalFormDto.prototype, "agence", void 0);
+class SignContractDto {
+    documentBase64;
+    eHouwiyaToken;
+}
+exports.SignContractDto = SignContractDto;
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsNotEmpty)(),
+    __metadata("design:type", String)
+], SignContractDto.prototype, "documentBase64", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsNotEmpty)(),
+    __metadata("design:type", String)
+], SignContractDto.prototype, "eHouwiyaToken", void 0);
 //# sourceMappingURL=customer.dto.js.map

@@ -13,13 +13,29 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 };
 var CustomerService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CustomerService = void 0;
+exports.CustomerService = exports.EHOUWIYA_LOCKED_FIELDS = void 0;
 const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const customer_entity_1 = require("./entities/customer.entity");
 const FormData = require('form-data');
 const axios = require('axios');
+exports.EHOUWIYA_LOCKED_FIELDS = [
+    'lastName',
+    'firstName',
+    'lastNameArabic',
+    'firstNameArabic',
+    'gender',
+    'nationality',
+    'birthDate',
+    'birthPlace',
+    'countryOfBirth',
+    'countryOfResidence',
+    'idCardNumber',
+    'idIssueDate',
+    'email',
+    'phoneNumber',
+];
 let CustomerService = CustomerService_1 = class CustomerService {
     repo;
     logger = new common_1.Logger(CustomerService_1.name);
@@ -75,7 +91,7 @@ let CustomerService = CustomerService_1 = class CustomerService {
             otpAttempts: 0,
         });
         const saved = await this.repo.save(customer);
-        this.logger.log(`[CREATE] ✅ Customer créé : ${saved.id} | email=${saved.email} | CIN=${saved.idCardNumber}`);
+        this.logger.log(`[CREATE] ✅ Customer créé : ${saved.id} | source=${saved.identificationSource}`);
         return saved;
     }
     async generateOtp(id) {
@@ -150,12 +166,19 @@ let CustomerService = CustomerService_1 = class CustomerService {
         return saved;
     }
     async findOne(id) { return this.findOrFail(id); }
-    async findAll() { return this.repo.find({ order: { createdAt: 'DESC' } }); }
+    async findAll() {
+        return this.repo.find({ order: { createdAt: 'DESC' } });
+    }
     async findByEmail(email) {
         return this.repo.findOne({ where: { email } });
     }
     async update(id, dto) {
         const customer = await this.findOrFail(id);
+        if (customer.identificationSource === customer_entity_1.IdentificationSource.E_HOUWIYA) {
+            exports.EHOUWIYA_LOCKED_FIELDS.forEach(field => delete dto[field]);
+            this.logger.log(`[UPDATE] [E-HOUWIYA] Champs verrouillés protégés pour : ${id} ` +
+                `(identité + email + téléphone)`);
+        }
         Object.assign(customer, dto);
         const updated = await this.repo.save(customer);
         this.logger.log(`[UPDATE] Customer mis à jour : ${id}`);

@@ -16,15 +16,17 @@ const contract_service_1 = require("./contract/contract.service");
 const contract_controller_1 = require("./contract/contract.controller");
 const onboarding_verification_controller_1 = require("./onboarding-verification.controller");
 const onboarding_verification_service_1 = require("./onboarding-verification.service");
+const ehouwiya_controller_1 = require("./ehouwiya/ehouwiya.controller");
+const ehouwiya_service_1 = require("./ehouwiya/ehouwiya.service");
 let CustomerModule = class CustomerModule {
 };
 exports.CustomerModule = CustomerModule;
 exports.CustomerModule = CustomerModule = __decorate([
     (0, common_1.Module)({
         imports: [typeorm_1.TypeOrmModule.forFeature([customer_entity_1.Customer])],
-        controllers: [customer_controller_1.CustomerController, contract_controller_1.ContractController, onboarding_verification_controller_1.OnboardingVerificationController],
-        providers: [customer_service_1.CustomerService, contract_service_1.ContractService, onboarding_verification_service_1.OnboardingVerificationService],
-        exports: [customer_service_1.CustomerService],
+        controllers: [customer_controller_1.CustomerController, contract_controller_1.ContractController, onboarding_verification_controller_1.OnboardingVerificationController, ehouwiya_controller_1.EHouwiyaController],
+        providers: [customer_service_1.CustomerService, contract_service_1.ContractService, onboarding_verification_service_1.OnboardingVerificationService, ehouwiya_service_1.EHouwiyaService],
+        exports: [customer_service_1.CustomerService, ehouwiya_service_1.EHouwiyaService],
     })
 ], CustomerModule);
 //# sourceMappingURL=customer.module.js.map

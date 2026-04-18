@@ -16,23 +16,23 @@ export class CreateCustomerDto {
   // ── Identité ────────────────────────────────────────────────
   @IsString()
   @IsNotEmpty({ message: 'Le nom est obligatoire' })
-  lastName: string;
+  lastName!: string;
 
   @IsString()
   @IsNotEmpty({ message: 'Le prénom est obligatoire' })
-  firstName: string;
+  firstName!: string;
 
   @IsString()
   @IsNotEmpty({ message: 'Le nom en arabe est obligatoire' })
-  lastNameArabic: string;
+  lastNameArabic!: string;
 
   @IsString()
   @IsNotEmpty({ message: 'Le prénom en arabe est obligatoire' })
-  firstNameArabic: string;
+  firstNameArabic!: string;
 
   @IsString()
   @IsNotEmpty({ message: 'Le genre est obligatoire' })
-  gender: string; // 'M' ou 'F'
+  gender!: string; // 'M' ou 'F'
 
   @IsString()
   @IsOptional()
@@ -41,7 +41,7 @@ export class CreateCustomerDto {
   @IsString()
   @IsNotEmpty({ message: 'La date de naissance est obligatoire' })
   @Matches(/^\d{2}\/\d{2}\/\d{4}$/, { message: 'Format attendu: JJ/MM/AAAA' })
-  birthDate: string;
+  birthDate!: string;
 
   @IsString()
   @IsOptional()
@@ -59,20 +59,20 @@ export class CreateCustomerDto {
   @IsString()
   @IsNotEmpty({ message: 'Le numéro de téléphone est obligatoire' })
   @Length(8, 8, { message: 'Le numéro doit contenir exactement 8 chiffres' })
-  phoneNumber: string;
+  phoneNumber!: string;
 
   @IsEmail({}, { message: 'Adresse email invalide' })
   @IsNotEmpty({ message: 'L\'email est obligatoire' })
-  email: string;
+  email!: string;
 
   // ── Pièce d'identité ────────────────────────────────────────
   @IsString()
   @IsNotEmpty({ message: 'Le numéro CIN est obligatoire' })
   @Length(8, 8, { message: 'Le numéro CIN doit contenir exactement 8 chiffres' })
-  idCardNumber: string;
+  idCardNumber!: string;
 
   @IsString()
   @IsNotEmpty({ message: 'La date d\'émission est obligatoire' })
   @Matches(/^\d{2}\/\d{2}\/\d{4}$/, { message: 'Format attendu: JJ/MM/AAAA' })
-  idIssueDate: string;
+  idIssueDate!: string;
 }

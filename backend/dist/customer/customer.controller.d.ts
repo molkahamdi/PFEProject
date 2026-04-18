@@ -10,6 +10,7 @@ export declare class CustomerController {
             id: string;
             currentStep: number;
             status: import("./entities/customer.entity").CustomerStatus;
+            identificationSource: import("./entities/customer.entity").IdentificationSource;
         };
     }>;
     findOne(id: string): Promise<{
@@ -73,6 +74,7 @@ export declare class CustomerController {
             id: string;
             currentStep: number;
             status: import("./entities/customer.entity").CustomerStatus;
+            identificationSource: import("./entities/customer.entity").IdentificationSource;
         };
     }>;
     ocrScan(customerId: string, file: Express.Multer.File, docType: string): Promise<any>;

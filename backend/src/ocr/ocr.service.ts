@@ -1,6 +1,7 @@
 import { Injectable, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import { AxiosError } from 'axios';
 
 const FormData = require('form-data');
 
@@ -24,6 +25,14 @@ export interface OcrResult {
   parsedData:    OcrParsedData;
   confidence:    number;
   docType:       DocType;
+}
+
+// Interface pour la réponse d'erreur du microservice OCR
+interface OcrErrorResponse {
+  detail?: string;
+  message?: string;
+  error?: string;
+  statusCode?: number;
 }
 
 @Injectable()
@@ -59,7 +68,16 @@ export class OcrService {
       return response.data;
 
     } catch (error) {
-      const msg = error?.response?.data?.detail || error?.message || 'Erreur OCR inconnue';
+      // Solution : Typer correctement l'erreur Axios avec notre interface
+      const axiosError = error as AxiosError<OcrErrorResponse>;
+      
+      // Accéder aux données d'erreur de manière type-safe
+      const errorData = axiosError.response?.data;
+      const msg = errorData?.detail || 
+                  errorData?.message || 
+                  axiosError.message || 
+                  'Erreur OCR inconnue';
+      
       this.logger.error(`OCR échoué [${docType}]: ${msg}`);
       throw new HttpException(
         `Erreur microservice OCR: ${msg}`,

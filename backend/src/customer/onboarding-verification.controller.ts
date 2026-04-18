@@ -1,6 +1,16 @@
 // ============================================================
 //  backend/src/customer/onboarding-verification.controller.ts
+//  Ce controller expose :
+//   - POST /customer/:id/verify-onboarding
+//     → Appelé depuis les DEUX flux (MANUAL et E-HOUWIYA)
+//        via OnboardingPersonalDataScreen.handleContinue()
+//     → VerifPID cherche maintenant les doublons tous flux
+//        confondus (correction dans onboarding-verification.service.ts)
+//
+//   - POST /customer/:id/verify-risk
+//     → Appelé depuis l'écran PersonalDataForm (adresse/pro)
 // ============================================================
+
 import {
   Controller, Post, Param, HttpCode, HttpStatus,
 } from '@nestjs/common';
