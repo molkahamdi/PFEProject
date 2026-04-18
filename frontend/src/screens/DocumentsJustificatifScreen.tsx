@@ -5,6 +5,7 @@
 //  ✅ Alerte "dossier signalé" à la dernière tentative ratée
 //  ✅ Logs détaillés conservés en console dev uniquement
 //  ✅ UploadBox désactivée si document bloqué
+//  ✅ [FIX] Bouton retour → toujours vers FATCAScreen (SANS params E-Houwiya)
 // ============================================================
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -17,11 +18,12 @@ import { AntDesign, Feather, MaterialIcons, Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import colors from '../../constants/colors';
-import { NavigationProp, RouteProp } from '../types/navigation';
+import { NavigationProp, RouteProp, OcrFormData } from '../types/navigation';
 import { saveDocuments } from '../services/customerApi';
 import { useOcrScan, OcrDocKey } from '../hooks/useOcrScan';
 import { OcrResultBadge } from '../components/common/OcrResultBadge';
 import { DocumentScanGuide } from '../components/common/DocumentScanGuide';
+
 import type { DocType as OcrDocType, OcrScanResult } from '../services/ocrApi';
 
 type Props = {
@@ -250,7 +252,7 @@ const ProgressBar: React.FC<{ count: number; total: number }> = ({ count, total 
 // ── Composant principal ───────────────────────────────────────
 const DocumentsJustificatifsScreen: React.FC<Props> = ({ navigation, route }) => {
   const { customerId } = route.params;
-  const formData = (route.params?.formData ?? {}) as import('../services/ocrApi').OcrFormData;
+  const formData: OcrFormData = route.params?.formData ? (route.params.formData as OcrFormData) : { lastNameArabic: undefined, firstNameArabic: undefined };
 
   // ── Documents ────────────────────────────────────────────
   const [cinRectoDocument, setCinRectoDocument] = useState<UploadedDocument | null>(null);
@@ -639,11 +641,17 @@ const DocumentsJustificatifsScreen: React.FC<Props> = ({ navigation, route }) =>
                 </View>
               </View>
 
-              {/* Boutons navigation */}
+              {/* ✅ Boutons navigation - Retour forcé vers FATCA (SANS params E-Houwiya) */}
               <View style={styles.buttonContainer}>
                 <TouchableOpacity
                   style={styles.backButton}
-                  onPress={() => navigation.goBack()}
+                  onPress={() => {
+                    // ✅ [FIX] Retour toujours vers FATCAScreen
+                    // ✅ On ne passe PAS isEHouwiya et eHouwiyaData (FATCA n'a pas de lien avec E-Houwiya)
+                    // @ts-ignore
+                    navigation.navigate('FATCA', { customerId, fromRecap: false });
+
+                  }}
                 >
                   <Feather name="arrow-left" size={18} color={colors.neutral.gray700} />
                   <Text style={styles.backButtonText}>Retour</Text>
@@ -682,7 +690,7 @@ const DocumentsJustificatifsScreen: React.FC<Props> = ({ navigation, route }) =>
   );
 };
 
-// ── Styles ────────────────────────────────────────────────────
+// ── Styles (inchangés) ────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   safeArea:      { flex: 1, backgroundColor: colors.neutral.white },
   flex:          { flex: 1 },

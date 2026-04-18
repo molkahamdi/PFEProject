@@ -20,6 +20,7 @@ import ForgetPasswordScreen from '@/screens/ForgotPasswordScreen';
 import NewPasswordScreen from '@/screens/NewPasswordScreen';
 import RecapitulatifScreen from '@/screens/RecapitulatifScreen';
 import ContractScreen from '@/screens/ContractScreen';
+import EHouwiyaScreen from '@/screens/EHouwiyaScreen';
 const Stack = createNativeStackNavigator<RootStackParamList>();
 export default function App() {
   return (
@@ -95,7 +96,7 @@ export default function App() {
           name="ContractScreen" 
           component={ContractScreen}
         />
-       
+       <Stack.Screen name="EHouwiyaScreen" component={EHouwiyaScreen} />
       </Stack.Navigator>
       
        

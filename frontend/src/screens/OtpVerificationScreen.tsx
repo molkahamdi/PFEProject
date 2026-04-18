@@ -240,25 +240,43 @@ const OtpVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
 
   // ── Retour ───────────────────────────────────────────────
   const handleBack = () => {
-    if (isSms) {
-      // @ts-ignore
-      navigation.navigate('OnboardingPersonalData', {
-        customerId,
-        prefillData: {
-          lastName:        formData?.lastNameLatin   ?? '',
-          firstName:       formData?.firstNameLatin  ?? '',
-          lastNameArabic:  formData?.lastName        ?? '',
-          firstNameArabic: formData?.firstName       ?? '',
-          idCardNumber:    formData?.idCardNumber    ?? '',
-          birthDate:       formData?.birthDate       ?? '',
-          email:           formData?.email           ?? '',
-        },
-      });
-    } else {
-      // @ts-ignore
-      navigation.navigate('OtpVerification', { customerId, formData, mode: 'sms' });
-    }
-  };
+  if (isSms) {
+    // @ts-ignore
+    navigation.navigate('OnboardingPersonalData', {
+      customerId,
+      // ✅ isEHouwiya transmis pour maintenir le mode verrouillé si applicable
+      isEHouwiya:  (route.params as any)?.isEHouwiya  ?? false,
+      eHouwiyaData: (route.params as any)?.eHouwiyaData ?? null,
+      prefillData: {
+        // ── Noms latin ──────────────────────────────────────
+        // Dans otpFormData : lastNameLatin = nom français, firstNameLatin = prénom français
+        lastNameLatin:   formData?.lastNameLatin  ?? formData?.lastName  ?? '',
+        firstNameLatin:  formData?.firstNameLatin ?? formData?.firstName ?? '',
+        // ── Noms arabes ──────────────────────────────────────
+        // Dans otpFormData : lastName = arabe, firstName = arabe
+        lastName:        formData?.lastName  ?? '',
+        firstName:       formData?.firstName ?? '',
+        lastNameArabic:  formData?.lastNameArabic ?? '',
+        firstNameArabic: formData?.firstNameArabic ?? '',
+        // ── Identité ─────────────────────────────────────────
+        idCardNumber:    formData?.idCardNumber  ?? '',
+        birthDate:       formData?.birthDate     ?? '',
+        idIssueDate:     formData?.idIssueDate   ?? '',    // ✅ AJOUTÉ
+        gender:          formData?.gender        ?? '',    // ✅ AJOUTÉ
+        nationality:     formData?.nationality   ?? 'Tunisie', // ✅ AJOUTÉ
+        birthPlace:      formData?.birthPlace    ?? 'Tunis',   // ✅ AJOUTÉ
+        countryOfBirth:     formData?.countryOfBirth     ?? 'Tunisie', // ✅ AJOUTÉ
+        countryOfResidence: formData?.countryOfResidence ?? 'Tunisie', // ✅ AJOUTÉ
+        // ── Contact ──────────────────────────────────────────
+        email:           formData?.email       ?? '',
+        phoneNumber:     formData?.phoneNumber ?? '',      // ✅ AJOUTÉ
+      },
+    });
+  } else {
+    // @ts-ignore
+    navigation.navigate('OtpVerification', { customerId, formData, mode: 'sms' });
+  }
+};
 
   // ── Rendu ─────────────────────────────────────────────────
   return (

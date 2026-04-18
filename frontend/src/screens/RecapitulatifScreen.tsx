@@ -1,3 +1,28 @@
+// ============================================================
+//  frontend/screens/RecapitulatifScreen.tsx
+//
+//  ✅ [E-HOUWIYA] Logique des sections :
+//  ─────────────────────────────────────────
+//  Section 1 — Informations personnelles
+//    → E-Houwiya : 🔒 VERROUILLÉE (certifiée TunTrust)
+//    → Manuel    : ✅ ÉDITABLE
+//
+//  Section 2 — Déclaration FATCA
+//    → E-Houwiya : ✅ ÉDITABLE (le client la remplit lui-même)
+//    → Manuel    : ✅ ÉDITABLE
+//    ⚠️  Le FATCA n'est PAS fourni par E-Houwiya / TunTrust.
+//    C'est une déclaration réglementaire remplie par le client
+//    pour identifier les liens avec les États-Unis.
+//    Si le client répond "Oui" → bloqué dans FATCAScreen.
+//    Donc toujours modifiable dans les deux flux.
+//
+//  Section 3 — Documents justificatifs
+//    → TOUJOURS 🔒 VERROUILLÉE (vérifiée par OCR)
+//
+//  Section 4 — Adresse & Situation professionnelle
+//    → TOUJOURS ✅ ÉDITABLE (non fourni par E-Houwiya)
+// ============================================================
+
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
@@ -12,7 +37,7 @@ import { getCustomer } from '../services/customerApi';
 
 type Props = {
   navigation: NavigationProp<'Recapitulatif'>;
-  route: RouteProp<'Recapitulatif'>;
+  route:      RouteProp<'Recapitulatif'>;
 };
 
 type Customer = {
@@ -29,9 +54,12 @@ type Customer = {
   adresse?: string; adresseSuite?: string; situationProfessionnelle?: string;
   profession?: string; posteActuel?: string; entreprise?: string;
   revenuMensuel?: number; gouvernoratAgence?: string; agence?: string;
+  identificationSource?: 'E_HOUWIYA' | 'MANUAL';
+  isContractSigned?:     boolean;
+  eHouwiyaSignatureId?:  string;
 };
 
-// ── PhaseIndicator ────────────────────────────────────────────
+// ── PhaseIndicator ─────────────────────────────────────────
 const PhaseIndicator: React.FC<{ currentPhase: number }> = ({ currentPhase }) => {
   const phases = [
     { id: 1, label: 'Données personnelles' },
@@ -50,22 +78,16 @@ const PhaseIndicator: React.FC<{ currentPhase: number }> = ({ currentPhase }) =>
               phase.id < currentPhase && styles.phaseRadioCompleted,
               phase.id === currentPhase && styles.phaseRadioActive,
             ]}>
-              {phase.id < currentPhase ? (
-                <Text style={styles.phaseRadioCheck}>✓</Text>
-              ) : (
-                <View style={[
-                  styles.phaseRadioInner,
-                  phase.id === currentPhase && styles.phaseRadioInnerActive,
-                ]} />
-              )}
+              {phase.id < currentPhase
+                ? <Text style={styles.phaseRadioCheck}>✓</Text>
+                : <View style={[styles.phaseRadioInner, phase.id === currentPhase && styles.phaseRadioInnerActive]} />
+              }
             </View>
             <Text style={[
               styles.phaseLabel,
               phase.id === currentPhase && styles.phaseLabelActive,
               phase.id < currentPhase && styles.phaseLabelCompleted,
-            ]}>
-              {phase.label}
-            </Text>
+            ]}>{phase.label}</Text>
           </View>
           {index < phases.length - 1 && <View style={styles.phaseConnector} />}
         </React.Fragment>
@@ -74,7 +96,7 @@ const PhaseIndicator: React.FC<{ currentPhase: number }> = ({ currentPhase }) =>
   );
 };
 
-// ── Sous-composants ───────────────────────────────────────────
+// ── InfoRow ─────────────────────────────────────────────────
 const InfoRow: React.FC<{ label: string; value?: string | null }> = ({ label, value }) => {
   if (!value) return null;
   return (
@@ -98,7 +120,7 @@ const SubTitle: React.FC<{ children: string }> = ({ children }) => (
 
 const Divider: React.FC = () => <View style={styles.divider} />;
 
-// ── Section modifiable ────────────────────────────────────────
+// ── Section toujours éditable ──────────────────────────────
 const Section: React.FC<{
   number: string; title: string; icon: React.ReactNode;
   onEdit: () => void; children: React.ReactNode;
@@ -108,10 +130,7 @@ const Section: React.FC<{
       <LinearGradient colors={[colors.atb.red, colors.atb.red]} style={styles.sectionBadge}>
         <Text style={styles.sectionBadgeText}>{number}</Text>
       </LinearGradient>
-      <View style={styles.sectionTitleRow}>
-        {icon}
-        <Text style={styles.sectionTitle}>{title}</Text>
-      </View>
+      <View style={styles.sectionTitleRow}>{icon}<Text style={styles.sectionTitle}>{title}</Text></View>
       <TouchableOpacity style={styles.editBtn} onPress={onEdit} activeOpacity={0.7}>
         <Feather name="edit-2" size={13} color={colors.atb.red} />
         <Text style={styles.editBtnText}>Modifier</Text>
@@ -121,56 +140,73 @@ const Section: React.FC<{
   </View>
 );
 
-// ── Section verrouillée (documents) ──────────────────────────
+// ── Section verrouillée OCR (documents) ───────────────────
 const LockedSection: React.FC<{
-  number: string; title: string; icon: React.ReactNode;
-  children: React.ReactNode;
+  number: string; title: string; icon: React.ReactNode; children: React.ReactNode;
 }> = ({ number, title, icon, children }) => (
   <View style={styles.section}>
-    {/* En-tête avec cadenas au lieu du bouton modifier */}
     <View style={styles.sectionHeader}>
       <LinearGradient colors={['#6b7280', '#4b5563']} style={styles.sectionBadge}>
         <Text style={styles.sectionBadgeText}>{number}</Text>
       </LinearGradient>
-      <View style={styles.sectionTitleRow}>
-        {icon}
-        <Text style={styles.sectionTitle}>{title}</Text>
-      </View>
+      <View style={styles.sectionTitleRow}>{icon}<Text style={styles.sectionTitle}>{title}</Text></View>
       <View style={styles.lockedBadge}>
         <Ionicons name="lock-closed" size={12} color="#6b7280" />
         <Text style={styles.lockedBadgeText}>Vérifié</Text>
       </View>
     </View>
-
-    {/* Notice de sécurité */}
     <View style={styles.lockedNotice}>
       <Ionicons name="shield-checkmark" size={16} color="#c82333" />
       <Text style={styles.lockedNoticeText}>
-        Les documents d'identité soumis sont définitivement liés à votre dossier
-        et ne peuvent pas être modifiés. Ils constituent la preuve de vérification
-        de votre identité.
+        Les documents d'identité soumis sont définitivement liés à votre dossier et ne peuvent pas être modifiés.
       </Text>
     </View>
-
     <View style={styles.sectionBody}>{children}</View>
   </View>
 );
 
-// ── Composant principal ───────────────────────────────────────
+// ── Section verrouillée E-Houwiya (infos perso uniquement) ─
+// ✅ Utilisée UNIQUEMENT pour la Section 1 (identité certifiée TunTrust)
+// Le FATCA reste toujours éditable → utilise Section normale
+const EHouwiyaLockedSection: React.FC<{
+  number: string; title: string; icon: React.ReactNode; children: React.ReactNode;
+}> = ({ number, title, icon, children }) => (
+  <View style={styles.section}>
+    <View style={styles.sectionHeader}>
+      <LinearGradient colors={['#059669', '#047857']} style={styles.sectionBadge}>
+        <Text style={styles.sectionBadgeText}>{number}</Text>
+      </LinearGradient>
+      <View style={styles.sectionTitleRow}>{icon}<Text style={styles.sectionTitle}>{title}</Text></View>
+      <View style={styles.eHouwiyaBadge}>
+        <Ionicons name="shield-checkmark" size={12} color="#059669" />
+        <Text style={styles.eHouwiyaBadgeText}>E-Houwiya</Text>
+      </View>
+    </View>
+    <View style={styles.eHouwiyaNotice}>
+      <Ionicons name="shield-checkmark" size={16} color="#059669" />
+      <Text style={styles.eHouwiyaNoticeText}>
+        Données certifiées par TunTrust via E-Houwiya.
+        Ces informations ne peuvent pas être modifiées car elles font partie
+        de votre identité numérique nationale.
+      </Text>
+    </View>
+    <View style={styles.sectionBody}>{children}</View>
+  </View>
+);
+
+// ── Composant principal ────────────────────────────────────
 const RecapitulatifScreen: React.FC<Props> = ({ navigation, route }) => {
   const { customerId } = route.params;
-  const [customer, setCustomer]   = useState<Customer | null>(null);
-  const [loading, setLoading]     = useState(true);
+  const [customer, setCustomer]     = useState<Customer | null>(null);
+  const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
-  const currentPhase = 3;
 
   const loadCustomerData = useCallback(async (showLoader = true) => {
     if (showLoader) setLoading(true);
     try {
       const data = await getCustomer(customerId);
       setCustomer(data as Customer);
-    } catch (error: any) {
+    } catch {
       Alert.alert('Erreur de chargement', 'Impossible de charger le récapitulatif.', [
         { text: 'Annuler', style: 'cancel' },
         { text: 'Réessayer', onPress: () => loadCustomerData(showLoader) },
@@ -182,9 +218,7 @@ const RecapitulatifScreen: React.FC<Props> = ({ navigation, route }) => {
   }, [customerId]);
 
   useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
-      loadCustomerData(false);
-    });
+    const unsubscribe = navigation.addListener('focus', () => loadCustomerData(false));
     loadCustomerData(true);
     return unsubscribe;
   }, [loadCustomerData, navigation]);
@@ -195,6 +229,9 @@ const RecapitulatifScreen: React.FC<Props> = ({ navigation, route }) => {
   const formatBoolean    = (v?: boolean | null) => v === true ? '✓ Oui' : v === false ? '✗ Non' : '—';
   const formatFileStatus = (path?: string) => path ? '✓ Téléchargé et vérifié' : '✗ Manquant';
   const formatCurrency   = (v?: number) => v ? `${v} DT` : null;
+
+  // ✅ [E-HOUWIYA] Détecter le flux E-Houwiya
+  const isEHouwiya = customer?.identificationSource === 'E_HOUWIYA';
 
   if (loading) {
     return (
@@ -244,42 +281,62 @@ const RecapitulatifScreen: React.FC<Props> = ({ navigation, route }) => {
             <Text style={styles.title}>Résumé de la demande</Text>
             <Text style={styles.subtitle}>Veuillez vérifier les données que vous avez renseignées.</Text>
             <View style={styles.phaseIndicatorWrapper}>
-              <PhaseIndicator currentPhase={currentPhase} />
+              <PhaseIndicator currentPhase={3} />
             </View>
           </View>
 
-          {/* Bandeau info */}
-          <View style={styles.infoBanner}>
-            <Ionicons name="information-circle" size={20} color={colors.atb.red} />
-            <Text style={styles.infoBannerText}>
-              Vous pouvez modifier les sections personnelles. Les documents d'identité vérifiés sont définitivement enregistrés.
-            </Text>
-          </View>
+          
 
-          {/* ── Section 1 : Informations personnelles ── */}
-          <Section
-            number="1"
-            title="Informations personnelles"
-            icon={<Ionicons name="person-outline" size={16} color={colors.atb.red} style={{ marginRight: 6 }} />}
-            onEdit={() => {
-              // @ts-ignore
-              navigation.navigate('OnboardingPersonalData', { customerId, fromRecap: true });
-            }}
-          >
-            <InfoRow label="Nom complet"    value={formatFullName()} />
-            <InfoRow label="Nom arabe"      value={formatArabicName()} />
-            <InfoRow label="Civilité"       value={formatGender()} />
-            <InfoRow label="Nationalité"    value={customer.nationality} />
-            <InfoRow label="Date naissance" value={customer.birthDate} />
-            <InfoRow label="Lieu naissance" value={`${customer.birthPlace}, ${customer.countryOfBirth}`} />
-            <InfoRow label="Téléphone"      value={`+216 ${customer.phoneNumber}`} />
-            <InfoRow label="Email"          value={customer.email} />
-            <InfoRow label="N° CIN"         value={customer.idCardNumber} />
-            <InfoRow label="Date émission"  value={customer.idIssueDate} />
-            <VerifiedBadge />
-          </Section>
+          {/* ══════════════════════════════════════════════════════
+              SECTION 1 — Informations personnelles
+              ✅ [E-HOUWIYA] → Verrouillée (certifiée TunTrust)
+              Manuel         → Éditable
+          ══════════════════════════════════════════════════════ */}
+          {isEHouwiya ? (
+            <EHouwiyaLockedSection
+              number="1"
+              title="Informations personnelles"
+              icon={<Ionicons name="shield-checkmark-outline" size={16} color="#059669" style={{ marginRight: 6 }} />}
+            >
+              <InfoRow label="Nom complet"    value={formatFullName()} />
+              <InfoRow label="Nom arabe"      value={formatArabicName()} />
+              <InfoRow label="Civilité"       value={formatGender()} />
+              <InfoRow label="Nationalité"    value={customer.nationality} />
+              <InfoRow label="Date naissance" value={customer.birthDate} />
+              <InfoRow label="Lieu naissance" value={`${customer.birthPlace}, ${customer.countryOfBirth}`} />
+              <InfoRow label="Téléphone"      value={`+216 ${customer.phoneNumber}`} />
+              <InfoRow label="Email"          value={customer.email} />
+              <InfoRow label="N° CIN"         value={customer.idCardNumber} />
+              <InfoRow label="Date émission"  value={customer.idIssueDate} />
+              <View style={styles.eHouwiyaCertBadge}>
+                <Ionicons name="shield-checkmark" size={14} color="#059669" />
+                <Text style={styles.eHouwiyaCertText}>Certifié E-Houwiya · TunTrust ✓</Text>
+              </View>
+            </EHouwiyaLockedSection>
+          ) : (
+            <Section
+              number="1"
+              title="Informations personnelles"
+              icon={<Ionicons name="person-outline" size={16} color={colors.atb.red} style={{ marginRight: 6 }} />}
+              onEdit={() => {
+                // @ts-ignore
+                navigation.navigate('OnboardingPersonalData', { customerId, fromRecap: true });
+              }}
+            >
+              <InfoRow label="Nom complet"    value={formatFullName()} />
+              <InfoRow label="Nom arabe"      value={formatArabicName()} />
+              <InfoRow label="Civilité"       value={formatGender()} />
+              <InfoRow label="Nationalité"    value={customer.nationality} />
+              <InfoRow label="Date naissance" value={customer.birthDate} />
+              <InfoRow label="Lieu naissance" value={`${customer.birthPlace}, ${customer.countryOfBirth}`} />
+              <InfoRow label="Téléphone"      value={`+216 ${customer.phoneNumber}`} />
+              <InfoRow label="Email"          value={customer.email} />
+              <InfoRow label="N° CIN"         value={customer.idCardNumber} />
+              <InfoRow label="Date émission"  value={customer.idIssueDate} />
+              <VerifiedBadge />
+            </Section>
+          )}
 
-          {/* ── Section 2 : FATCA ── */}
           <Section
             number="2"
             title="Déclaration FATCA"
@@ -289,6 +346,13 @@ const RecapitulatifScreen: React.FC<Props> = ({ navigation, route }) => {
               navigation.navigate('FATCA', { customerId, fromRecap: true });
             }}
           >
+            {/* ✅ Info FATCA — rappel que le client peut modifier */}
+            <View style={styles.fatcaInfo}>
+              <Ionicons name="information-circle-outline" size={14} color={colors.neutral.gray500} />
+              <Text style={styles.fatcaInfoText}>
+                Déclaration remplie par vos soins — modifiable si nécessaire
+              </Text>
+            </View>
             <InfoRow label="Citoyen américain"      value={formatBoolean(customer.isUsCitizen)} />
             <InfoRow label="Résident USA"            value={formatBoolean(customer.isUsResident)} />
             <InfoRow label="Green Card"              value={formatBoolean(customer.hasGreenCard)} />
@@ -299,7 +363,10 @@ const RecapitulatifScreen: React.FC<Props> = ({ navigation, route }) => {
             <InfoRow label="Personne exposée (PEP)"  value={formatBoolean(customer.isPoliticallyExposed)} />
           </Section>
 
-          {/* ── Section 3 : Documents — VERROUILLÉE ── */}
+          {/* ══════════════════════════════════════════════════════
+              SECTION 3 — Documents justificatifs
+              TOUJOURS VERROUILLÉE (vérifiée par OCR)
+          ══════════════════════════════════════════════════════ */}
           <LockedSection
             number="3"
             title="Documents justificatifs"
@@ -320,7 +387,10 @@ const RecapitulatifScreen: React.FC<Props> = ({ navigation, route }) => {
             )}
           </LockedSection>
 
-          {/* ── Section 4 : Adresse & Profession ── */}
+          {/* ══════════════════════════════════════════════════════
+              SECTION 4 — Adresse & Situation professionnelle
+              TOUJOURS ÉDITABLE — non fourni par E-Houwiya
+          ══════════════════════════════════════════════════════ */}
           <Section
             number="4"
             title="Adresse & Situation professionnelle"
@@ -339,10 +409,10 @@ const RecapitulatifScreen: React.FC<Props> = ({ navigation, route }) => {
             <InfoRow label="Complément"  value={customer.adresseSuite} />
             <Divider />
             <SubTitle>Situation professionnelle</SubTitle>
-            <InfoRow label="Situation"  value={customer.situationProfessionnelle} />
-            <InfoRow label="Profession" value={customer.profession} />
-            <InfoRow label="Poste"      value={customer.posteActuel} />
-            <InfoRow label="Entreprise" value={customer.entreprise} />
+            <InfoRow label="Situation"   value={customer.situationProfessionnelle} />
+            <InfoRow label="Profession"  value={customer.profession} />
+            <InfoRow label="Poste"       value={customer.posteActuel} />
+            <InfoRow label="Entreprise"  value={customer.entreprise} />
             <InfoRow label="Revenu/mois" value={formatCurrency(customer.revenuMensuel)} />
             <Divider />
             <SubTitle>Agence ATB</SubTitle>
@@ -359,7 +429,7 @@ const RecapitulatifScreen: React.FC<Props> = ({ navigation, route }) => {
             <TouchableOpacity
               onPress={() => {
                 // @ts-ignore
-              navigation.navigate('ContractScreen', { customerId});
+                navigation.navigate('ContractScreen', { customerId });
               }}
               style={styles.continueButton}
             >
@@ -376,35 +446,36 @@ const RecapitulatifScreen: React.FC<Props> = ({ navigation, route }) => {
             <Text style={styles.footerText}>© 2026 Arab Tunisian Bank · Tous droits réservés</Text>
             <Text style={styles.footerSubtext}>Service client : 71 143 000</Text>
           </View>
+
         </View>
       </ScrollView>
     </SafeAreaView>
   );
 };
 
-// ── Styles ────────────────────────────────────────────────────
+// ── Styles ─────────────────────────────────────────────────
 const styles = StyleSheet.create({
   safeArea:      { flex: 1, backgroundColor: colors.neutral.white },
   loadingScreen: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.neutral.white },
   loadingText:   { marginTop: 16, fontSize: 15, color: colors.neutral.gray600 },
 
-  header:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.neutral.gray300, backgroundColor: colors.neutral.gray100 },
-  headerLeft:  { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  logo:        { width: 40, height: 40 },
-  logoGradient:{ width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  bankName:    { fontSize: 16, fontWeight: '700', color: colors.atb.red },
-  bankSubtitle:{ fontSize: 11, color: colors.neutral.gray500, marginTop: 2 },
-  digipackBadge:{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 4 },
-  digipackText: { fontSize: 10, fontWeight: '800', color: '#fff', letterSpacing: 2 },
+  header:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.neutral.gray300, backgroundColor: colors.neutral.gray100 },
+  headerLeft:    { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  logo:          { width: 40, height: 40 },
+  logoGradient:  { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  bankName:      { fontSize: 16, fontWeight: '700', color: colors.atb.red },
+  bankSubtitle:  { fontSize: 11, color: colors.neutral.gray500, marginTop: 2 },
+  digipackBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 4 },
+  digipackText:  { fontSize: 10, fontWeight: '800', color: '#fff', letterSpacing: 2 },
 
   scrollContent: { paddingBottom: 40 },
   content:       { padding: 20 },
 
-  phaseIndicatorWrapper:  { marginTop: 10 },
-  phaseContainer:         { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingVertical: 8 },
-  phaseItem:              { alignItems: 'center', flex: 1 },
-  phaseRadioOuter:        { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: colors.neutral.gray400, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
-  phaseRadioInner:        { width: 10, height: 10, borderRadius: 5, backgroundColor: 'transparent' },
+  phaseIndicatorWrapper: { marginTop: 10 },
+  phaseContainer:  { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingVertical: 8 },
+  phaseItem:       { alignItems: 'center', flex: 1 },
+  phaseRadioOuter: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: colors.neutral.gray400, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
+  phaseRadioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: 'transparent' },
   phaseRadioInnerActive:  { backgroundColor: colors.atb.red },
   phaseRadioActive:       { borderColor: colors.atb.red },
   phaseRadioCompleted:    { borderColor: colors.atb.red, backgroundColor: colors.atb.red },
@@ -418,25 +489,44 @@ const styles = StyleSheet.create({
   title:        { fontSize: 24, fontWeight: '700', color: colors.neutral.gray900, marginBottom: 4 },
   subtitle:     { fontSize: 13, color: colors.neutral.gray600, marginBottom: 12 },
 
+  // Bannière standard (flux manuel)
   infoBanner:     { flexDirection: 'row', backgroundColor: 'rgba(139,21,56,0.06)', borderRadius: 10, padding: 14, marginBottom: 16, gap: 10, alignItems: 'flex-start' },
   infoBannerText: { flex: 1, fontSize: 13, color: colors.neutral.gray700, lineHeight: 19 },
 
-  // Section modifiable
-  section:        { backgroundColor: colors.neutral.white, borderRadius: 14, marginBottom: 14, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2, overflow: 'hidden' },
-  sectionHeader:  { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.neutral.gray100 },
-  sectionBadge:   { width: 28, height: 28, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
-  sectionBadgeText:{ fontSize: 13, fontWeight: '800', color: '#fff' },
-  sectionTitleRow:{ flexDirection: 'row', alignItems: 'center', flex: 1 },
-  sectionTitle:   { fontSize: 14, fontWeight: '700', color: colors.neutral.gray900 },
-  editBtn:        { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: colors.atb.red },
-  editBtnText:    { fontSize: 12, color: colors.atb.red, fontWeight: '600' },
-  sectionBody:    { padding: 16 },
+  // ✅ [E-HOUWIYA] Bannière verte avec détail clair
+  eHouwiyaBanner:       { backgroundColor: 'rgba(5,150,105,0.07)', borderWidth: 1, borderColor: 'rgba(5,150,105,0.25)', borderRadius: 12, padding: 16, marginBottom: 16 },
+  eHouwiyaBannerHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  eHouwiyaBannerTitle:  { fontSize: 14, fontWeight: '700', color: '#059669' },
+  eHouwiyaBannerText:   { fontSize: 13, color: '#047857', lineHeight: 20 },
 
-  // Section verrouillée
-  lockedBadge:     { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: '#d1d5db', backgroundColor: '#f9fafb' },
-  lockedBadgeText: { fontSize: 12, color: '#6b7280', fontWeight: '600' },
-  lockedNotice:    { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginHorizontal: 16, marginTop: 14, marginBottom: 2, backgroundColor: 'rgba(200,35,51,0.05)', borderRadius: 8, padding: 12, borderWidth: 1, borderColor: 'rgba(200,35,51,0.15)' },
-  lockedNoticeText:{ flex: 1, fontSize: 12, color: '#7f1d1d', lineHeight: 18 },
+  // Sections communes
+  section:          { backgroundColor: colors.neutral.white, borderRadius: 14, marginBottom: 14, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2, overflow: 'hidden' },
+  sectionHeader:    { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.neutral.gray100 },
+  sectionBadge:     { width: 28, height: 28, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+  sectionBadgeText: { fontSize: 13, fontWeight: '800', color: '#fff' },
+  sectionTitleRow:  { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  sectionTitle:     { fontSize: 14, fontWeight: '700', color: colors.neutral.gray900 },
+  editBtn:          { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: colors.atb.red },
+  editBtnText:      { fontSize: 12, color: colors.atb.red, fontWeight: '600' },
+  sectionBody:      { padding: 16 },
+
+  // Section verrouillée OCR
+  lockedBadge:      { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: '#d1d5db', backgroundColor: '#f9fafb' },
+  lockedBadgeText:  { fontSize: 12, color: '#6b7280', fontWeight: '600' },
+  lockedNotice:     { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginHorizontal: 16, marginTop: 14, marginBottom: 2, backgroundColor: 'rgba(200,35,51,0.05)', borderRadius: 8, padding: 12, borderWidth: 1, borderColor: 'rgba(200,35,51,0.15)' },
+  lockedNoticeText: { flex: 1, fontSize: 12, color: '#7f1d1d', lineHeight: 18 },
+
+  // ✅ [E-HOUWIYA] Section verrouillée verte (infos perso seulement)
+  eHouwiyaBadge:      { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(5,150,105,0.3)', backgroundColor: 'rgba(5,150,105,0.07)' },
+  eHouwiyaBadgeText:  { fontSize: 12, color: '#059669', fontWeight: '600' },
+  eHouwiyaNotice:     { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginHorizontal: 16, marginTop: 14, marginBottom: 2, backgroundColor: 'rgba(5,150,105,0.05)', borderRadius: 8, padding: 12, borderWidth: 1, borderColor: 'rgba(5,150,105,0.2)' },
+  eHouwiyaNoticeText: { flex: 1, fontSize: 12, color: '#065f46', lineHeight: 18 },
+  eHouwiyaCertBadge:  { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, backgroundColor: 'rgba(5,150,105,0.08)', padding: 10, borderRadius: 8 },
+  eHouwiyaCertText:   { fontSize: 13, color: '#059669', fontWeight: '600' },
+
+  // ✅ Info FATCA — indique que c'est modifiable
+  fatcaInfo:     { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12, backgroundColor: colors.neutral.gray50, padding: 10, borderRadius: 8 },
+  fatcaInfoText: { fontSize: 12, color: colors.neutral.gray500, flex: 1 },
 
   subTitle:  { fontSize: 12, fontWeight: '700', color: colors.atb.red, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8, marginTop: 4 },
   divider:   { height: 1, backgroundColor: colors.neutral.gray100, marginVertical: 12 },
